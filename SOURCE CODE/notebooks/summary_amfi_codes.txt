@@ -1,0 +1,21 @@
+AMFI Code Validation & Data Quality Summary
+A automated validation script (scripts/validate_amfi_codes.py) was created and executed against data/raw/01_fund_master.csv and data/raw/02_nav_history.csv.
+
+1. AMFI Code Match Confirmation
+Metric	Count / Status	Notes
+Unique AMFI Codes in 01_fund_master.csv	40	Total schemes in master metadata
+Unique AMFI Codes in 02_nav_history.csv	40	Total schemes in NAV historical dataset
+Schemes Present in Both Datasets	40	100.00% Match Coverage Rate
+Missing Codes in NAV History	0	CONFIRMED: Every code in master exists in history
+Unmapped Extra Codes in NAV History	0	CONFIRMED: No dangling/unmapped scheme codes
+
+2. Data Quality Metrics Summary
+Total NAV History Records: 46,000 rows.
+Balanced Dataset: Exactly 1,150 records per scheme for all 40 schemes.
+Historical Date Span: January 3, 2022 to May 29, 2026.
+Completeness:
+Missing NAV values: 0 (0.0%)
+Missing Date values: 0 (0.0%)
+Missing values in 01_fund_master.csv: 0 across all 15 columns.
+Uniqueness & Integrity:
+Duplicate (amfi_code, date) records: 0
