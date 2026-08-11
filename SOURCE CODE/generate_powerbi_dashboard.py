@@ -342,39 +342,19 @@ def generate_pdf():
     print("Generated Dashboard.pdf successfully.")
 
 # ==========================================
-# GENERATE .PBIX ARCHIVE TEMPLATE
+# PBIX FILE GUIDANCE
 # ==========================================
 def generate_pbix():
+    # Power BI Desktop .pbix files require native binary compilation from Power BI Desktop.
+    # We remove any dummy archive file to ensure Power BI Desktop creates a pristine native file.
     pbix_filename = 'bluestock_mf_dashboard.pbix'
-    
-    # Standard PBIX Layout structure
-    layout_content = {
-        "id": 0,
-        "name": "Bluestock Mutual Fund Analytics Dashboard",
-        "sections": [
-            {"displayName": "Industry Overview", "name": "ReportSection1"},
-            {"displayName": "Fund Performance", "name": "ReportSection2"},
-            {"displayName": "Investor Analytics", "name": "ReportSection3"},
-            {"displayName": "SIP & Market Trends", "name": "ReportSection4"},
-            {"displayName": "NAV Detail", "name": "ReportSection5"}
-        ],
-        "config": json.dumps({"theme": "BluestockTheme", "version": "1.0"})
-    }
-    
-    version_content = "1.24"
-    content_types = """<?xml version="1.0" encoding="utf-8"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-    <Default Extension="json" ContentType="application/json" />
-    <Default Extension="xml" ContentType="application/xml" />
-</Types>"""
-
-    with zipfile.ZipFile(pbix_filename, 'w', zipfile.ZIP_DEFLATED) as pbix:
-        pbix.writestr('Report/Layout', json.dumps(layout_content, indent=2))
-        pbix.writestr('Version', version_content)
-        pbix.writestr('[Content_Types].xml', content_types)
-        pbix.writestr('DataModelSchema', json.dumps({"name": "MutualFundDataModel", "tables": ["dim_fund", "dim_date", "fact_nav", "fact_transactions", "fact_performance", "fact_aum"]}))
-        
-    print(f"Generated {pbix_filename} successfully.")
+    if os.path.exists(pbix_filename):
+        try:
+            os.remove(pbix_filename)
+            print(f"Removed previous dummy {pbix_filename} to allow native Power BI Desktop save.")
+        except Exception as e:
+            pass
+    print("PBIX Note: Save directly via File -> Save in Power BI Desktop after loading CSVs.")
 
 if __name__ == '__main__':
     generate_page1()
