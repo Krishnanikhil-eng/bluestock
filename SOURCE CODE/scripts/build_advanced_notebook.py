@@ -1,5 +1,5 @@
 """
-Script to build 03_advanced_analytics.ipynb programmatically using nbformat.
+Script to build 03_advanced_analytics.ipynb programmatically matching final exact audit requirements.
 """
 
 import os
@@ -13,16 +13,17 @@ def build_notebook():
     nb.cells = []
     
     # Title
-    nb.cells.append(nbf.v4.new_markdown_cell("""# Bluestock Mutual Fund - Advanced Portfolio Analytics
+    nb.cells.append(nbf.v4.new_markdown_cell("""# Bluestock Mutual Fund - Advanced Portfolio & Behavioral Analytics
 
-**Project Phase:** Advanced Portfolio & Investor Behavioral Analytics  
+**Project Phase:** Advanced Portfolio Analytics Layer  
 **Database Source:** `mutual_fund_analysis.db` (SQLite Star Schema)  
-**Scope:** Historical Risk (VaR/CVaR), Rolling Performance (Sharpe), Investor Cohort LTV/Retention, SIP Continuity & Churn, Risk-Adjusted Fund Recommendation Engine, and Sector Concentration (HHI).
+**Holdings Source:** `DATASETS/raw/09_portfolio_holdings.csv`  
+**Scope:** Historical VaR/CVaR, Rolling 90-Day Sharpe, Investor Cohort Analysis, SIP Continuity, Simple Fund Recommender, Sector HHI Concentration, 5 Executive Insights, and Final Validation.
 
 ---
 
 ## 1. Project Setup
-Initialize environment, connect to SQLite database, and load core analytical modules.
+Initialize environment, configure visual styles, connect to SQLite database, and load data handling libraries.
 """))
     
     nb.cells.append(nbf.v4.new_code_cell("""import sqlite3
@@ -32,16 +33,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# Set visual styling
+# Visual styling
 sns.set_theme(style="whitegrid")
 plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['figure.dpi'] = 120
 
-# Database path
 DB_PATH = '../../mutual_fund_analysis.db'
 RAW_DATA_DIR = '../../DATASETS/raw'
 
-print(f"Connected to database at: {DB_PATH}")
+print(f"Database path set to: {DB_PATH}")
 """))
     
     # Section 2: Load Data
@@ -65,7 +65,7 @@ print(f"Loaded {len(dim_fund)} funds, {len(fact_nav)} NAV records, and {len(fact
 
     # Section 3: Data Preparation
     nb.cells.append(nbf.v4.new_markdown_cell("""## 3. Data Preparation
-Format dates, verify data integrity across all 40 schemes, and calculate daily NAV percentage returns.
+Format timestamps, verify missing values, sort time series, and calculate daily NAV percentage returns per scheme.
 """))
 
     nb.cells.append(nbf.v4.new_code_cell("""# Preprocess NAV dates & sort
@@ -78,29 +78,26 @@ fact_nav['daily_return'] = fact_nav.groupby('amfi_code')['nav'].pct_change() * 1
 # Preprocess transactions
 fact_transactions['transaction_date'] = pd.to_datetime(fact_transactions['transaction_date'])
 
-print(f"Data prep complete. Evaluated date range: {fact_nav['date'].min().strftime('%Y-%m-%d')} to {fact_nav['date'].max().strftime('%Y-%m-%d')}")
+print(f"Data prep complete across {fact_nav['amfi_code'].nunique()} schemes.")
 """))
 
     # Section 4: Task 1 - Historical VaR & CVaR
     nb.cells.append(nbf.v4.new_markdown_cell("""## 4. Historical VaR & CVaR (95% Confidence)
 
-### Financial Methodology & Interpretation:
-1. **Historical Value at Risk (VaR 95%)**: Measures the maximum expected loss over a 1-day holding period at a 95% confidence level ($5^{\\text{th}}$ percentile of daily returns).
-   - *Interpretation of Negative VaR*: A 95% VaR of **-1.85%** means that 95% of trading days experienced daily returns better than -1.85%, while on 5% of trading days (worst-case tail), losses equaled or exceeded 1.85%.
-2. **Conditional Value at Risk (CVaR 95% / Expected Shortfall)**: Quantifies tail risk by taking the average of all daily returns that fall at or below the 95% VaR threshold.
-   - *Interpretation of Negative CVaR*: A 95% CVaR of **-2.45%** represents the expected average daily loss on extreme market downturn days.
-3. **Downside Risk Ranking**: Schemes are ordered from **highest downside risk** (most negative VaR/CVaR values, typical of Small Cap equity funds) to **lowest downside risk** (least negative values, typical of Liquid/Gilt funds).
+### Financial Methodology:
+- **Historical 95% VaR**: $5^{\\text{th}}$ percentile of daily NAV returns.
+- **Historical 95% CVaR**: Average return for observations strictly below the VaR threshold ($R_t < \\text{VaR}_{95\\%}$).
+- **Sign Convention**: More negative values denote greater downside tail risk.
 """))
 
-    nb.cells.append(nbf.v4.new_code_cell("""# Calculate 95% VaR & CVaR for all schemes
-var_results = []
-alpha_95 = 5.0  # 5th percentile for 95% confidence
+    nb.cells.append(nbf.v4.new_code_cell("""var_results = []
+alpha_95 = 5.0
 
 for amfi_code, group in fact_nav.groupby('amfi_code'):
     rets = group['daily_return'].dropna()
     if len(rets) > 0:
         var_95 = np.percentile(rets, alpha_95)
-        cvar_95 = rets[rets <= var_95].mean()
+        cvar_95 = rets[rets < var_95].mean()
         var_results.append({
             'amfi_code': amfi_code,
             'var_95_pct': round(var_95, 2),
@@ -108,59 +105,41 @@ for amfi_code, group in fact_nav.groupby('amfi_code'):
             'total_trading_days': len(rets)
         })
 
-var_df = pd.DataFrame(var_results)
-
-# Merge metadata from dim_fund
-var_df = var_df.merge(dim_fund[['amfi_code', 'scheme_name', 'fund_house', 'category']], on='amfi_code', how='right')
-
-# Rank from highest downside risk (most negative VaR) to lowest downside risk
+var_df = pd.DataFrame(var_results).merge(dim_fund[['amfi_code', 'scheme_name', 'fund_house', 'category']], on='amfi_code', how='right')
 var_df = var_df.sort_values('var_95_pct', ascending=True).reset_index(drop=True)
 var_df['downside_risk_rank'] = var_df.index + 1
 
-# Select final clean columns
 var_summary_table = var_df[['downside_risk_rank', 'amfi_code', 'scheme_name', 'fund_house', 'category', 'var_95_pct', 'cvar_95_pct', 'total_trading_days']]
+print(f"Total schemes evaluated: {len(var_summary_table)} (Expected: 40). Missing VaR/CVaR count: {var_summary_table['var_95_pct'].isna().sum()}")
 
-# Validation check
-print(f"Coverage Validation: {len(var_summary_table)} / 40 schemes evaluated. Missing data count: {var_summary_table['var_95_pct'].isna().sum()}")
-
-# Display top 10 highest downside risk schemes
+# Display Top 10 Highest Downside Risk Funds
 var_summary_table.head(10)
-"""))
-
-    nb.cells.append(nbf.v4.new_code_cell("""# Display top 5 safest (lowest downside risk) schemes
-var_summary_table.tail(5)
 """))
 
     # Section 5: Task 2 - Rolling 90-Day Sharpe
     nb.cells.append(nbf.v4.new_markdown_cell("""## 5. Rolling 90-Day Sharpe Ratio
 
-### Methodology:
-1. **Primary Rolling Sharpe Formula**:
-   $$\\text{Rolling Sharpe} = \\frac{\\text{returns.rolling(90).mean()}}{\\text{returns.rolling(90).std()}} \\times \\sqrt{252}$$
-   - *Note*: Per project specification, the primary calculation evaluates return-to-volatility ratio directly without subtracting risk-free rate.
-2. **Optional Risk-Free Rate Adjusted Formula** (Shown separately for comparison):
-   $$\\text{Rolling Sharpe}_{rf} = \\frac{\\text{returns.rolling(90).mean()} - r_{f,\\text{daily}}}{\\text{returns.rolling(90).std()}} \\times \\sqrt{252}$$
-   - Where $r_{f,\\text{annual}} = 6.5\\% \\implies r_{f,\\text{daily}} = \\frac{6.5\\%}{252} \\approx 0.0258\\%$.
-3. **Consistency & Stability Metrics**: Evaluates `mean`, `std`, `min`, `max`, and `latest` rolling 90-day Sharpe ratios to separate consistently performing funds from volatile/unstable funds.
+### Methodology & Plot:
+$$\\text{Rolling Sharpe} = \\frac{\\text{returns.rolling(90).mean()}}{\\text{returns.rolling(90).std()}} \\times \\sqrt{252}$$
 """))
 
-    nb.cells.append(nbf.v4.new_code_cell("""# Calculate 90-day rolling Sharpe metrics per scheme
-window = 90
+    nb.cells.append(nbf.v4.new_code_cell("""window = 90
 sharpe_results = []
 
+# Dictionary to hold time series for plotting
+rolling_ts_dict = {}
+
 for amfi_code, group in fact_nav.groupby('amfi_code'):
+    group = group.sort_values('date')
     rets = group['daily_return']
     r_mean = rets.rolling(window).mean()
     r_std = rets.rolling(window).std()
     
-    # Primary formula
     r_sharpe = (r_mean / r_std) * np.sqrt(252)
-    r_sharpe_clean = r_sharpe.dropna()
+    group['rolling_sharpe'] = r_sharpe
     
-    # Optional RF adjusted formula
-    daily_rf = 6.5 / 252
-    r_sharpe_rf = ((r_mean - daily_rf) / r_std) * np.sqrt(252)
-    r_sharpe_rf_clean = r_sharpe_rf.dropna()
+    rolling_ts_dict[amfi_code] = group[['date', 'rolling_sharpe']].dropna()
+    r_sharpe_clean = r_sharpe.dropna()
     
     if len(r_sharpe_clean) > 0:
         sharpe_results.append({
@@ -170,7 +149,6 @@ for amfi_code, group in fact_nav.groupby('amfi_code'):
             'min_rolling_sharpe': round(r_sharpe_clean.min(), 2),
             'max_rolling_sharpe': round(r_sharpe_clean.max(), 2),
             'latest_rolling_sharpe': round(r_sharpe_clean.iloc[-1], 2),
-            'mean_rolling_sharpe_rf_adj': round(r_sharpe_rf_clean.mean(), 2) if len(r_sharpe_rf_clean) > 0 else np.nan,
             'rolling_windows_evaluated': len(r_sharpe_clean)
         })
 
@@ -178,161 +156,178 @@ sharpe_summary_table = pd.DataFrame(sharpe_results).merge(dim_fund[['amfi_code',
 sharpe_summary_table = sharpe_summary_table.sort_values('mean_rolling_sharpe', ascending=False).reset_index(drop=True)
 sharpe_summary_table['rank'] = sharpe_summary_table.index + 1
 
-cols = ['rank', 'amfi_code', 'scheme_name', 'category', 'mean_rolling_sharpe', 'std_rolling_sharpe', 'min_rolling_sharpe', 'max_rolling_sharpe', 'latest_rolling_sharpe', 'mean_rolling_sharpe_rf_adj']
+cols = ['rank', 'amfi_code', 'scheme_name', 'category', 'mean_rolling_sharpe', 'std_rolling_sharpe', 'min_rolling_sharpe', 'max_rolling_sharpe', 'latest_rolling_sharpe']
 sharpe_summary_table = sharpe_summary_table[cols]
 
-# Display Top 10 Funds by Mean 90-Day Rolling Sharpe Ratio
 sharpe_summary_table.head(10)
 """))
 
-    # Section 6: Task 3 - Investor Cohort Analysis
-    nb.cells.append(nbf.v4.new_markdown_cell("""## 6. Investor Cohort Analysis
+    nb.cells.append(nbf.v4.new_code_cell("""# Visualize Rolling 90-Day Sharpe for 5 Representative Schemes across Categories
+sample_schemes = [
+    (120507, 'ICICI Pru Liquid Fund (Liquid Debt)'),
+    (119598, 'SBI Small Cap Fund (Small Cap)'),
+    (100033, 'HDFC Mid-Cap Opportunities (Mid Cap)'),
+    (120843, 'Kotak Flexicap Fund (Flexi Cap)'),
+    (148567, 'Mirae Asset Large Cap Fund (Large Cap)')
+]
 
-### Business Methodology:
-1. **Acquisition Cohort Definition**: Group investors by the calendar month of their first transaction (`cohort_month`).
-2. **Cohort Index**: Calculate relative period indices ($0, 1, 2, \\dots, 16$) measuring elapsed months since acquisition.
-3. **Retention Rate (%)**: Active unique investors in Month $N$ divided by initial cohort size in Month 0.
-4. **Cumulative Investor LTV (INR)**: Cumulative transaction value generated by the cohort divided by initial investor count.
+plt.figure(figsize=(12, 6))
+for amfi_code, label in sample_schemes:
+    if amfi_code in rolling_ts_dict:
+        ts = rolling_ts_dict[amfi_code]
+        plt.plot(ts['date'], ts['rolling_sharpe'], label=label, linewidth=1.5)
+
+plt.axhline(0, color='black', linestyle='--', linewidth=1, alpha=0.7)
+plt.title("Rolling 90-Day Sharpe Ratio Time-Series (Selected 5 Funds)", fontsize=14, fontweight='bold', pad=12)
+plt.xlabel("Date", fontsize=11)
+plt.ylabel("Rolling 90-Day Sharpe Ratio", fontsize=11)
+plt.legend(loc='upper left', frameon=True)
+plt.tight_layout()
+plt.show()
 """))
 
-    nb.cells.append(nbf.v4.new_code_cell("""# 1. Map cohort month and index
-tx_prep = fact_transactions.copy()
-tx_prep['tx_month'] = tx_prep['transaction_date'].dt.to_period('M')
+    # Section 6: Task 3 - Investor Cohort Analysis
+    nb.cells.append(nbf.v4.new_markdown_cell("""## 6. Investor Cohort Analysis (by Cohort Year)
 
-first_tx = tx_prep.groupby('investor_id')['tx_month'].min().rename('cohort_month')
-tx_prep = tx_prep.merge(first_tx, on='investor_id')
+### Methodology:
+- **Cohort Year**: Year of investor's first transaction.
+- **Metrics**: `investor_count`, `avg_sip_amount` (SIP only), `total_invested_amount_cr` (all transactions), and `top_fund`.
+"""))
 
-tx_prep['cohort_index'] = (tx_prep['tx_month'].dt.year - tx_prep['cohort_month'].dt.year) * 12 + (tx_prep['tx_month'].dt.month - tx_prep['cohort_month'].dt.month)
+    nb.cells.append(nbf.v4.new_code_cell("""tx_prep = fact_transactions.copy()
+first_tx_date = tx_prep.groupby('investor_id')['transaction_date'].min().rename('first_tx_date')
+tx_prep = tx_prep.merge(first_tx_date, on='investor_id')
+tx_prep['cohort_year'] = tx_prep['first_tx_date'].dt.year
 
-# 2. Build Retention Matrix (%)
-cohort_counts = tx_prep.groupby(['cohort_month', 'cohort_index'])['investor_id'].nunique().unstack()
-cohort_sizes = cohort_counts[0]
-retention_matrix = cohort_counts.divide(cohort_sizes, axis=0) * 100
+cohort_rows = []
+for cy, group in tx_prep.groupby('cohort_year'):
+    inv_count = group['investor_id'].nunique()
+    
+    sip_sub = group[group['transaction_type'] == 'SIP']
+    avg_sip = sip_sub['amount_inr'].mean() if len(sip_sub) > 0 else 0.0
+    tot_inv_cr = group['amount_inr'].sum() / 1e7
+    
+    fund_vols = group.groupby('amfi_code')['amount_inr'].sum().reset_index()
+    fund_vols = fund_vols.merge(dim_fund[['amfi_code', 'scheme_name']], on='amfi_code')
+    top_fund_name = fund_vols.sort_values('amount_inr', ascending=False).iloc[0]['scheme_name']
+    
+    cohort_rows.append({
+        'cohort_year': cy,
+        'investor_count': inv_count,
+        'avg_sip_amount': round(avg_sip, 2),
+        'total_invested_amount_cr': round(tot_inv_cr, 2),
+        'top_fund': top_fund_name
+    })
 
-# 3. Build Cumulative LTV Matrix (INR per Investor)
-cohort_cum_val = tx_prep.groupby(['cohort_month', 'cohort_index'])['amount_inr'].sum().groupby(level=0).cumsum().unstack()
-cohort_ltv_matrix = cohort_cum_val.divide(cohort_sizes, axis=0)
-
-# Build Clean Cohort Summary Table
-cohort_summary_table = pd.DataFrame({
-    'cohort_month': cohort_sizes.index.astype(str),
-    'initial_investors': cohort_sizes.values,
-    'm1_retention_pct': retention_matrix[1].round(1).values if 1 in retention_matrix.columns else np.nan,
-    'm3_retention_pct': retention_matrix[3].round(1).values if 3 in retention_matrix.columns else np.nan,
-    'm6_retention_pct': retention_matrix[6].round(1).values if 6 in retention_matrix.columns else np.nan,
-    'cumulative_ltv_m6_inr': cohort_ltv_matrix[6].round(0).values if 6 in cohort_ltv_matrix.columns else np.nan
-})
-
-# Display Cohort Summary Table
+cohort_summary_table = pd.DataFrame(cohort_rows)
 cohort_summary_table
 """))
 
-    # Section 7: Task 4 - SIP Continuity Analysis
-    nb.cells.append(nbf.v4.new_markdown_cell("""## 7. SIP Continuity & Churn Analysis
+    # Section 7: Task 4 - SIP Continuity
+    nb.cells.append(nbf.v4.new_markdown_cell("""## 7. SIP Continuity Analysis (>= 6 SIPs & 35-Day Gap)
 
-### Methodology & Business Metrics:
-1. **SIP Filtering**: Standardize `transaction_type == 'SIP'` records across 32,778 transaction logs.
-2. **SIP Active Tenure**: Unique calendar months of active SIP deposits per investor.
-3. **SIP Churn Condition**: Investors whose last SIP installment occurred > 60 days prior to the maximum dataset date (`2025-05-31`).
-4. **Tenure Segmentation**: Categorized into `1 Month` (Immediate Churn), `2-5 Months`, `6-11 Months`, and `12+ Months` (Loyal Investors).
+### Business Rules:
+- **Qualifying Criteria**: Investors with $\\ge 6$ SIP transactions.
+- **Average Gap**: Average calendar days between consecutive SIP installments.
+- **Status Flag**: `average_gap_days > 35` $\\rightarrow$ `"At-Risk"`, else `"Consistent"`.
+- **SIP Continuity Rate (%)**: $\\frac{\\text{Consistent Qualifying Investors}}{\\text{All Qualifying Investors}} \\times 100$
 """))
 
-    nb.cells.append(nbf.v4.new_code_cell("""# Execute SIP Continuity & Churn Analytics
-sip_txs = fact_transactions[fact_transactions['transaction_type'] == 'SIP'].copy()
-sip_txs['tx_month'] = sip_txs['transaction_date'].dt.to_period('M')
+    nb.cells.append(nbf.v4.new_code_cell("""sip_df = fact_transactions[fact_transactions['transaction_type'] == 'SIP'].sort_values(['investor_id', 'transaction_date'])
+sip_counts = sip_df.groupby('investor_id')['transaction_date'].count()
+qualifying_investors = sip_counts[sip_counts >= 6].index
 
-total_sip_users = sip_txs['investor_id'].nunique()
-total_sip_txs = len(sip_txs)
-total_sip_val = sip_txs['amount_inr'].sum() / 1e7
+investor_results = []
+for inv_id in qualifying_investors:
+    sub = sip_df[sip_df['investor_id'] == inv_id].sort_values('transaction_date')
+    gaps = sub['transaction_date'].diff().dt.days.dropna()
+    avg_gap = gaps.mean()
+    status = 'At-Risk' if avg_gap > 35 else 'Consistent'
+    investor_results.append({
+        'investor_id': inv_id,
+        'sip_transaction_count': len(sub),
+        'average_gap_days': round(avg_gap, 1),
+        'continuity_status': status
+    })
 
-investor_tenure_months = sip_txs.groupby('investor_id')['tx_month'].nunique()
+sip_continuity_df = pd.DataFrame(investor_results)
+consistent_cnt = (sip_continuity_df['continuity_status'] == 'Consistent').sum()
+at_risk_cnt = (sip_continuity_df['continuity_status'] == 'At-Risk').sum()
+total_qual = len(sip_continuity_df)
+continuity_rate = (consistent_cnt / total_qual * 100) if total_qual > 0 else 0.0
 
-max_dataset_date = fact_transactions['transaction_date'].max()
-last_sip_date = sip_txs.groupby('investor_id')['transaction_date'].max()
-lapsed_days = (max_dataset_date - last_sip_date).dt.days
+print(f"Total Qualifying SIP Investors (>= 6 SIPs): {total_qual}")
+print(f"Consistent Investors: {consistent_cnt} | At-Risk Investors: {at_risk_cnt}")
+print(f"SIP Continuity Rate: {continuity_rate:.2f}%")
 
-churned_users = (lapsed_days > 60).sum()
-churn_rate = (churned_users / total_sip_users) * 100
-
-sip_kpi_summary = pd.DataFrame([
-    {'Metric': 'Total Unique SIP Investors', 'Value': f"{total_sip_users:,}"},
-    {'Metric': 'Total SIP Transactions Executed', 'Value': f"{total_sip_txs:,}"},
-    {'Metric': 'Total SIP Capital Mobilized', 'Value': f"₹{total_sip_val:,.2f} Cr"},
-    {'Metric': 'Average SIP Tenure per Investor', 'Value': f"{investor_tenure_months.mean():.2f} Months"},
-    {'Metric': 'Active SIP Investors (Last 60 Days)', 'Value': f"{(total_sip_users - churned_users):,} ({(100 - churn_rate):.1f}%)"},
-    {'Metric': 'Churned SIP Investors (>60 Days Inactive)', 'Value': f"{churned_users:,} ({churn_rate:.1f}%)"},
-    {'Metric': '1-Month Immediate Churn Count', 'Value': f"{(investor_tenure_months == 1).sum():,} ({(investor_tenure_months == 1).sum()/total_sip_users*100:.1f}%)"},
-    {'Metric': '12+ Month Loyal SIP Investors', 'Value': f"{(investor_tenure_months >= 12).sum():,} ({(investor_tenure_months >= 12).sum()/total_sip_users*100:.1f}%)"}
-])
-
-sip_kpi_summary
+# Display First 10 Qualifying Investors
+sip_continuity_df.head(10)
 """))
 
-    # Section 8: Task 5 - Risk-Based Fund Recommender
-    nb.cells.append(nbf.v4.new_markdown_cell("""## 8. Risk-Adjusted Fund Recommender Engine
+    # Section 8: Task 5 - Simple Fund Recommender
+    nb.cells.append(nbf.v4.new_markdown_cell("""## 8. Simple Fund Recommender Engine
 
-### Algorithm & Scoring Rules:
-1. **Screening Rules**: Filter candidates by investor risk tolerance (`Low`, `Moderate`, `High`) and desired investment horizon (`1-Year`, `3-Year`, `5-Year`).
-2. **Composite Ranking Score**:
-   $$\\text{Score} = 0.4 \\times \\text{Sharpe Ratio} + 0.4 \\times \\text{Return}_{3\\text{Yr}}\\% + 0.2 \\times \\text{Sortino Ratio}$$
-3. **Recommendation Output**: Top ranked funds matching the specified investor profile.
+### Algorithm:
+`recommend_funds(risk_appetite)` $\\implies$ Filter matching `risk_grade` $\\implies$ Sort by `sharpe_ratio` descending $\\implies$ Top 3 recommendations.
+
+*Disclaimer: Analytical recommender for demonstration purposes, not financial advice.*
 """))
 
-    nb.cells.append(nbf.v4.new_code_cell("""# Recommender Engine function for interactive notebook use
-def get_fund_recommendations(risk_level='Moderate', horizon='3-Year', top_n=3):
+    nb.cells.append(nbf.v4.new_code_cell("""def recommend_funds(risk_appetite, top_n=3):
+    risk_str = str(risk_appetite).strip().title()
+    valid_inputs = ['Low', 'Moderate', 'High']
+    if risk_str not in valid_inputs:
+        raise ValueError(f"Invalid risk_appetite '{risk_appetite}'. Must be one of {valid_inputs}")
+        
     sp = fact_performance.copy()
-    ret_col = 'return_3yr_pct' if horizon == '3-Year' else ('return_1yr_pct' if horizon == '1-Year' else 'return_5yr_pct')
     
-    def filter_risk(row):
-        cat = row['category']
-        if risk_level.lower() == 'low':
-            return cat in ['Liquid', 'Gilt', 'Short Duration']
-        elif risk_level.lower() == 'high':
-            return cat in ['Small Cap', 'Mid Cap', 'Sectoral/Thematic']
-        else:
-            return cat in ['Large Cap', 'Flexi Cap', 'Large & Mid Cap', 'Hybrid']
-            
-    filtered = sp[sp.apply(filter_risk, axis=1)].copy()
-    if len(filtered) < top_n:
+    if risk_str == 'Low':
+        match_grades = ['Low', 'Below Average', 'Low to Moderate']
+    elif risk_str == 'High':
+        match_grades = ['High', 'Very High']
+    else:
+        match_grades = ['Moderate', 'Moderately High', 'Average']
+        
+    filtered = sp[sp['risk_grade'].isin(match_grades)].copy()
+    if len(filtered) == 0:
         filtered = sp.copy()
         
-    filtered['composite_score'] = (filtered['sharpe_ratio'].fillna(0) * 0.4) + \
-                                   (filtered[ret_col].fillna(0) * 0.4) + \
-                                   (filtered['sortino_ratio'].fillna(0) * 0.2)
-                                   
-    recs = filtered.sort_values('composite_score', ascending=False).head(top_n).copy()
-    recs['rank'] = range(1, len(recs) + 1)
-    return recs[['rank', 'amfi_code', 'scheme_name', 'category', ret_col, 'std_dev_ann_pct', 'sharpe_ratio', 'sortino_ratio', 'aum_crore', 'composite_score']]
+    recs = filtered.sort_values('sharpe_ratio', ascending=False).head(top_n).copy()
+    recs['Rank'] = range(1, len(recs) + 1)
+    recs = recs.rename(columns={'scheme_name': 'Fund Name', 'risk_grade': 'Risk Grade', 'sharpe_ratio': 'Sharpe Ratio'})
+    
+    return recs[['Rank', 'Fund Name', 'Risk Grade', 'Sharpe Ratio']]
 
-# Test recommendations for Moderate Risk investor
-get_fund_recommendations(risk_level='Moderate', horizon='3-Year', top_n=3)
+# Test Recommender Engine across all supported risk appetites
+print("--- Low Risk Appetite ---")
+display(recommend_funds('Low'))
+
+print("--- Moderate Risk Appetite ---")
+display(recommend_funds('Moderate'))
+
+print("--- High Risk Appetite ---")
+display(recommend_funds('High'))
 """))
 
     # Section 9: Task 6 - Sector HHI
     nb.cells.append(nbf.v4.new_markdown_cell("""## 9. Sector Concentration Analysis (Herfindahl-Hirschman Index - HHI)
 
-### Methodology & Formulas:
-1. **Holding Aggregation**: Sum `weight_pct` across all stocks within the same sector per scheme (`amfi_code + sector`).
-2. **Normalized HHI Formula**:
-   $$\\text{HHI} = \\sum_{i=1}^{S} \\left( \\frac{\\text{sector\\_weight\\_pct}_i}{100} \\right)^2$$
-3. **Concentration Classification**:
-   - **High Concentration**: $\\text{HHI} > 0.18$
-   - **Moderate Concentration**: $0.10 \\le \\text{HHI} \\le 0.18$
-   - **Well-Diversified**: $\\text{HHI} < 0.10$
-4. **Data Verification**: Verified that sector weights sum to **100%** per scheme in `09_portfolio_holdings.csv`.
+### Normalized Decimal Formula:
+$$\\text{HHI} = \\sum_{i=1}^{S} \\left( \\frac{\\text{weight\\_pct}_i}{100} \\right)^2$$
 """))
 
-    nb.cells.append(nbf.v4.new_code_cell("""# Compute Sector HHI Concentration
-ph_data = pd.read_csv('../../DATASETS/raw/09_portfolio_holdings.csv')
+    nb.cells.append(nbf.v4.new_code_cell("""ph_data = pd.read_csv('../../DATASETS/raw/09_portfolio_holdings.csv')
+ph_data['sector'] = ph_data['sector'].astype(str).str.strip()
+ph_data['weight_pct'] = pd.to_numeric(ph_data['weight_pct'], errors='coerce')
 
-# 1. Aggregate by amfi_code + sector
 sector_aggs = ph_data.groupby(['amfi_code', 'sector'])['weight_pct'].sum().reset_index()
+fund_sector_sums = sector_aggs.groupby('amfi_code')['weight_pct'].sum()
 
-# 2. Compute normalized HHI
 hhi_rows = []
 for code, grp in sector_aggs.groupby('amfi_code'):
-    w_dec = grp['weight_pct'] / 100.0
-    hhi_val = (w_dec ** 2).sum()
+    total_w = fund_sector_sums.loc[code]
+    w_prop = grp['weight_pct'] / 100.0
+    hhi_val = (w_prop ** 2).sum()
     top_sec = grp.sort_values('weight_pct', ascending=False).iloc[0]
     
     status = 'High Concentration' if hhi_val > 0.18 else ('Moderate Concentration' if hhi_val >= 0.10 else 'Well-Diversified')
@@ -343,55 +338,41 @@ for code, grp in sector_aggs.groupby('amfi_code'):
         'concentration_status': status,
         'total_sectors': grp['sector'].nunique(),
         'top_sector_name': top_sec['sector'],
-        'top_sector_weight_pct': round(top_sec['weight_pct'], 2)
+        'top_sector_weight_pct': round(top_sec['weight_pct'], 2),
+        'total_portfolio_weight_sum': round(total_w, 2)
     })
 
 hhi_summary_table = pd.DataFrame(hhi_rows).merge(dim_fund[['amfi_code', 'scheme_name', 'category']], on='amfi_code', how='left')
 hhi_summary_table = hhi_summary_table.sort_values('sector_hhi', ascending=False).reset_index(drop=True)
 hhi_summary_table['rank'] = hhi_summary_table.index + 1
 
-# Display Top 10 Most Concentrated Schemes by Sector HHI
-hhi_summary_table[['rank', 'amfi_code', 'scheme_name', 'category', 'sector_hhi', 'concentration_status', 'total_sectors', 'top_sector_name', 'top_sector_weight_pct']].head(10)
+# Display Top 10 Most Concentrated Schemes
+hhi_summary_table[['rank', 'amfi_code', 'scheme_name', 'category', 'sector_hhi', 'concentration_status', 'total_sectors', 'top_sector_name', 'top_sector_weight_pct', 'total_portfolio_weight_sum']].head(10)
 """))
 
-    # Section 10: Task 7 - Advanced Insights
-    nb.cells.append(nbf.v4.new_markdown_cell("""## 10. Advanced Analytical Insights
+    # Section 10: Task 7 - Five Advanced Insights
+    nb.cells.append(nbf.v4.new_markdown_cell("""## 10. Exactly Five Advanced Executive Insights
 
-### Synthesis & Key Strategic Takeaways:
-1. **Downside Tail Risk (VaR / CVaR)**:
-   - Small Cap Equity schemes present the highest single-day downside risk ($95\\% \\text{ VaR} \\approx -2.39\\%$, $95\\% \\text{ CVaR} \\approx -3.03\\%$).
-   - Debt/Liquid schemes exhibit near-zero daily loss potential ($95\\% \\text{ VaR} \\approx -0.02\\%$).
-2. **Rolling Sharpe Stability**:
-   - Liquid debt schemes deliver consistently high return-to-volatility ratios ($> 9.0$) due to steady daily NAV growth with near-zero standard deviation.
-   - Small and Mid Cap equity schemes show wide cyclical swings in 90-day rolling Sharpe ratios (ranging from $-5.11$ to $+5.31$).
-3. **Investor Cohort Retention & Lifetime Value**:
-   - Investor retention experiences a sharp drop after Month 1 (retaining $\\sim 34\\%$ of initial investors), then stabilizes between $30\\% - 35\\%$ through Month 6.
-   - Cumulative cohort LTV reaches $\\sim \\text{INR } 4.08 \\text{ Lakhs}$ per investor by Month 6.
-4. **SIP Continuity & Churn Management**:
-   - **$62.0\\%$** of total unique SIP investors dropped off (no deposit in $>60$ days), with an average active tenure of **3.64 months**.
-   - Immediate churn (1-month tenure) accounts for **$16.3\\%$** of all SIP signups. Automated nudges and renewal workflows are strongly recommended.
-5. **Sector HHI Concentration**:
-   - Equity schemes feature elevated sector concentration ($\text{HHI } 0.18 - 0.29$), heavily concentrated in IT, Banking, and Pharma sectors.
-6. **Risk-Adjusted Recommendations**:
-   - **Low Risk Profile**: ICICI Pru Liquid Fund
-   - **Moderate Risk Profile**: Kotak Flexicap Fund
-   - **High Risk Profile**: SBI Small Cap Fund
+1. **HIGHEST DOWNSIDE RISK**: **ABSL Small Cap Fund - Regular - Growth** (`amfi_code: 101207`) exhibits the highest 1-day downside tail risk with a **95% VaR of -2.39%** and a **95% CVaR of -3.03%** across 1,607 daily return observations, confirming that Small Cap equity schemes carry the steepest downside volatility.
+2. **STRONGEST / WEAKEST SHARPE BEHAVIOR**: **ICICI Pru Liquid Fund - Regular - Growth** (`amfi_code: 120507`) demonstrates the highest mean 90-day rolling Sharpe ratio of **10.40** due to steady daily NAV growth and minimal daily deviation, whereas **UTI Mid Cap Fund - Regular - Growth** (`amfi_code: 102886`) exhibits the weakest mean 90-day rolling Sharpe of **0.11**.
+3. **HIGHEST-INVESTING COHORT**: **Investor Cohort Year 2024** is the largest acquisition group, comprising **4,803 unique investors** who mobilized total investments of **INR 349.11 Cr** with an average SIP ticket size of **INR 10,996.89**, heavily preferring **UTI Nifty 50 Index Fund**.
+4. **SIP CONTINUITY / AT-RISK INVESTORS**: Out of 1,362 qualifying investors with 6 or more SIP deposits, only **30 investors** maintained an average gap $\\le 35$ days (**SIP Continuity Rate = 2.20%**), while **1,332 qualifying investors (97.8%)** breached the 35-day threshold and are flagged as **At-Risk**.
+5. **HIGHEST SECTOR CONCENTRATION**: **Axis Bluechip Fund - Regular - Growth** (`amfi_code: 119092`) displays the highest portfolio concentration among equity funds with a normalized Sector HHI of **0.2968**, driven by a heavy **48.69%** allocation to the IT sector.
 """))
 
     # Section 11: Task 8 - Final Validation
     nb.cells.append(nbf.v4.new_markdown_cell("""## 11. Final Validation
 
-Execute integrity checks verifying coverage across all 40 schemes, non-null risk calculations, data alignment, and notebook execution status.
+Verification of all 40 schemes, data integrity, non-null risk metrics, and full notebook execution status.
 """))
 
-    nb.cells.append(nbf.v4.new_code_cell("""# Final System Validation Report
-validation_report = pd.DataFrame([{
-    'Total Star Schema Funds': len(dim_fund),
+    nb.cells.append(nbf.v4.new_code_cell("""validation_report = pd.DataFrame([{
+    'Total Schemes Verified': len(dim_fund),
     'Historical VaR Schemes Evaluated': len(var_summary_table),
     'Rolling Sharpe Schemes Evaluated': len(sharpe_summary_table),
+    'Qualifying SIP Investors (>=6 SIPs)': len(sip_continuity_df),
+    'SIP Continuity Rate (%)': f"{continuity_rate:.2f}%",
     'Sector HHI Schemes Evaluated': len(hhi_summary_table),
-    'Total Transaction Records Analyzed': len(fact_transactions),
-    'Total NAV Time-Series Rows': len(fact_nav),
     'Zero Missing Values in Risk Metrics': (var_summary_table['var_95_pct'].isna().sum() == 0),
     'All 40 Schemes Fully Covered': (len(var_summary_table) == 40 and len(sharpe_summary_table) == 40)
 }])
@@ -399,7 +380,6 @@ validation_report = pd.DataFrame([{
 validation_report
 """))
 
-    # Save notebook
     with open(NOTEBOOK_PATH, 'w', encoding='utf-8') as f:
         nbf.write(nb, f)
     print(f"Notebook successfully written to {NOTEBOOK_PATH}")
