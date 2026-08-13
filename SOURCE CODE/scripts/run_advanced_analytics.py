@@ -139,18 +139,65 @@ def calculate_rolling_sharpe(window=90):
             'min_rolling_sharpe', 'max_rolling_sharpe', 'latest_rolling_sharpe', 'mean_rolling_sharpe_rf_adj']
     return summary_df[cols]
 
+# ==============================================================================
+# TASK 3: INVESTOR COHORT ANALYSIS
+# ==============================================================================
+def analyze_investor_cohorts():
+    """
+    Perform monthly cohort analysis tracking investor retention, transaction volume,
+    and cumulative Lifetime Value (LTV) across acquisition cohorts.
+    """
+    conn = get_db_connection()
+    tx_df = pd.read_sql_query("SELECT investor_id, transaction_date, amount_inr, transaction_type FROM fact_transactions", conn)
+    conn.close()
+    
+    tx_df['transaction_date'] = pd.to_datetime(tx_df['transaction_date'])
+    tx_df['tx_month'] = tx_df['transaction_date'].dt.to_period('M')
+    
+    # 1. Identify cohort month (first transaction month per investor)
+    first_tx = tx_df.groupby('investor_id')['tx_month'].min().rename('cohort_month')
+    tx_df = tx_df.merge(first_tx, on='investor_id')
+    
+    # Calculate relative month index (0, 1, 2, ...)
+    tx_df['cohort_index'] = (tx_df['tx_month'].dt.year - tx_df['cohort_month'].dt.year) * 12 + (tx_df['tx_month'].dt.month - tx_df['cohort_month'].dt.month)
+    
+    # 2. Retention Matrix (Active unique investors per cohort index)
+    cohort_counts = tx_df.groupby(['cohort_month', 'cohort_index'])['investor_id'].nunique().unstack()
+    cohort_sizes = cohort_counts[0]
+    retention_matrix = cohort_counts.divide(cohort_sizes, axis=0) * 100
+    
+    # 3. Cohort Total Volume Matrix (INR Cr)
+    cohort_volume = tx_df.groupby(['cohort_month', 'cohort_index'])['amount_inr'].sum().unstack() / 1e7
+    
+    # 4. Cohort Cumulative LTV per Investor (INR)
+    cohort_cum_val = tx_df.groupby(['cohort_month', 'cohort_index'])['amount_inr'].sum().groupby(level=0).cumsum().unstack()
+    cohort_ltv = cohort_cum_val.divide(cohort_sizes, axis=0)
+    
+    # Build clean cohort summary DataFrame
+    cohort_summary = pd.DataFrame({
+        'cohort_month': cohort_sizes.index.astype(str),
+        'initial_investors': cohort_sizes.values,
+        'm1_retention_pct': retention_matrix[1].round(1).values if 1 in retention_matrix.columns else np.nan,
+        'm3_retention_pct': retention_matrix[3].round(1).values if 3 in retention_matrix.columns else np.nan,
+        'total_initial_capital_cr': cohort_volume[0].round(2).values,
+        'cumulative_ltv_m6_inr': cohort_ltv[6].round(0).values if 6 in cohort_ltv.columns else np.nan
+    })
+    
+    return cohort_summary, retention_matrix.round(1), cohort_ltv.round(0)
+
 if __name__ == '__main__':
     print("--- Executing Task 1: Historical VaR & CVaR ---")
     var_results = calculate_historical_var_cvar()
     print(f"Total schemes evaluated: {len(var_results)}")
-    print("\nTop 5 Highest Downside Risk Schemes (Worst VaR 95%):")
-    print(var_results.head(5).to_string(index=False))
     
     print("\n--- Executing Task 2: Rolling 90-Day Sharpe Ratio ---")
     sharpe_results = calculate_rolling_sharpe()
     print(f"Total schemes evaluated: {len(sharpe_results)}")
-    print("\nTop 5 Schemes by Mean 90-Day Rolling Sharpe:")
-    print(sharpe_results.head(5).to_string(index=False))
-    print("\nBottom 5 Schemes by Mean 90-Day Rolling Sharpe:")
-    print(sharpe_results.tail(5).to_string(index=False))
+    
+    print("\n--- Executing Task 3: Investor Cohort Analysis ---")
+    cohort_summary, retention_mat, ltv_mat = analyze_investor_cohorts()
+    print(f"Evaluated {len(cohort_summary)} monthly cohorts.")
+    print("\nInvestor Acquisition Cohort Summary:")
+    print(cohort_summary.to_string(index=False))
+
 
