@@ -268,6 +268,46 @@ sip_kpi_summary = pd.DataFrame([
 sip_kpi_summary
 """))
 
+    # Section 8: Task 5 - Risk-Based Fund Recommender
+    nb.cells.append(nbf.v4.new_markdown_cell("""## 8. Risk-Adjusted Fund Recommender Engine
+
+### Algorithm & Scoring Rules:
+1. **Screening Rules**: Filter candidates by investor risk tolerance (`Low`, `Moderate`, `High`) and desired investment horizon (`1-Year`, `3-Year`, `5-Year`).
+2. **Composite Ranking Score**:
+   $$\\text{Score} = 0.4 \\times \\text{Sharpe Ratio} + 0.4 \\times \\text{Return}_{3\\text{Yr}}\\% + 0.2 \\times \\text{Sortino Ratio}$$
+3. **Recommendation Output**: Top ranked funds matching the specified investor profile.
+"""))
+
+    nb.cells.append(nbf.v4.new_code_cell("""# Recommender Engine function for interactive notebook use
+def get_fund_recommendations(risk_level='Moderate', horizon='3-Year', top_n=3):
+    sp = fact_performance.copy()
+    ret_col = 'return_3yr_pct' if horizon == '3-Year' else ('return_1yr_pct' if horizon == '1-Year' else 'return_5yr_pct')
+    
+    def filter_risk(row):
+        cat = row['category']
+        if risk_level.lower() == 'low':
+            return cat in ['Liquid', 'Gilt', 'Short Duration']
+        elif risk_level.lower() == 'high':
+            return cat in ['Small Cap', 'Mid Cap', 'Sectoral/Thematic']
+        else:
+            return cat in ['Large Cap', 'Flexi Cap', 'Large & Mid Cap', 'Hybrid']
+            
+    filtered = sp[sp.apply(filter_risk, axis=1)].copy()
+    if len(filtered) < top_n:
+        filtered = sp.copy()
+        
+    filtered['composite_score'] = (filtered['sharpe_ratio'].fillna(0) * 0.4) + \
+                                   (filtered[ret_col].fillna(0) * 0.4) + \
+                                   (filtered['sortino_ratio'].fillna(0) * 0.2)
+                                   
+    recs = filtered.sort_values('composite_score', ascending=False).head(top_n).copy()
+    recs['rank'] = range(1, len(recs) + 1)
+    return recs[['rank', 'amfi_code', 'scheme_name', 'category', ret_col, 'std_dev_ann_pct', 'sharpe_ratio', 'sortino_ratio', 'aum_crore', 'composite_score']]
+
+# Test recommendations for Moderate Risk investor
+get_fund_recommendations(risk_level='Moderate', horizon='3-Year', top_n=3)
+"""))
+
     # Save notebook
     with open(NOTEBOOK_PATH, 'w', encoding='utf-8') as f:
         nbf.write(nb, f)

@@ -245,6 +245,66 @@ def analyze_sip_continuity():
     
     return sip_metrics
 
+# ==============================================================================
+# TASK 5: RISK-BASED FUND RECOMMENDER ENGINE
+# ==============================================================================
+def recommend_funds(risk_tolerance='Moderate', horizon='3-Year', top_n=3):
+    """
+    Risk-adjusted mutual fund recommendation engine that screens, scores, and ranks
+    candidate schemes based on investor risk profile and time horizon.
+    """
+    conn = get_db_connection()
+    sp = pd.read_sql_query("SELECT * FROM fact_performance", conn)
+    conn.close()
+    
+    # Map risk profiles to category filters & risk grade targets
+    if risk_tolerance.lower() == 'low':
+        allowed_categories = ['Liquid', 'Gilt', 'Short Duration', 'Debt']
+        target_risk_grades = ['Low', 'Moderate']
+    elif risk_tolerance.lower() == 'high':
+        allowed_categories = ['Small Cap', 'Mid Cap', 'Sectoral/Thematic', 'Equity']
+        target_risk_grades = ['High', 'Very High']
+    else:  # Moderate
+        allowed_categories = ['Large Cap', 'Flexi Cap', 'Large & Mid Cap', 'Hybrid', 'Balanced Advantage']
+        target_risk_grades = ['Moderate', 'High']
+        
+    # Horizon metric selection
+    ret_col = 'return_3yr_pct'
+    if horizon == '1-Year':
+        ret_col = 'return_1yr_pct'
+    elif horizon == '5-Year':
+        ret_col = 'return_5yr_pct'
+        
+    candidates = sp.copy()
+    
+    # Preprocess broad category mapping if specific subcategories aren't exact match
+    def match_risk_cat(row):
+        cat = row['category']
+        rg = str(row['risk_grade'])
+        if risk_tolerance.lower() == 'low':
+            return cat in ['Liquid', 'Gilt', 'Short Duration'] or 'Low' in rg or 'Debt' in str(row['plan'])
+        elif risk_tolerance.lower() == 'high':
+            return cat in ['Small Cap', 'Mid Cap', 'Sectoral/Thematic'] or 'High' in rg
+        else:
+            return cat in ['Large Cap', 'Flexi Cap', 'Large & Mid Cap', 'Hybrid'] or 'Moderate' in rg
+            
+    filtered = candidates[candidates.apply(match_risk_cat, axis=1)].copy()
+    if len(filtered) < top_n:
+        filtered = candidates.copy()  # Fallback to full pool if strict filter returns too few
+        
+    # Calculate composite score = (Sharpe Ratio * 0.4) + (Return % * 0.4) + (Sortino Ratio * 0.2)
+    filtered['composite_score'] = (filtered['sharpe_ratio'].fillna(0) * 0.4) + \
+                                   (filtered[ret_col].fillna(0) * 0.4) + \
+                                   (filtered['sortino_ratio'].fillna(0) * 0.2)
+                                   
+    recs = filtered.sort_values('composite_score', ascending=False).head(top_n).copy()
+    recs['recommendation_rank'] = range(1, len(recs) + 1)
+    
+    cols = ['recommendation_rank', 'amfi_code', 'scheme_name', 'category', 'risk_grade', 
+            ret_col, 'std_dev_ann_pct', 'sharpe_ratio', 'sortino_ratio', 'aum_crore', 'composite_score']
+    
+    return recs[cols]
+
 if __name__ == '__main__':
     print("--- Executing Task 1: Historical VaR & CVaR ---")
     var_results = calculate_historical_var_cvar()
@@ -261,6 +321,13 @@ if __name__ == '__main__':
     print("\n--- Executing Task 4: SIP Continuity & Churn Analysis ---")
     sip_metrics = analyze_sip_continuity()
     print(sip_metrics.to_string(index=False))
+    
+    print("\n--- Executing Task 5: Risk-Based Fund Recommender Engine ---")
+    for profile in ['Low', 'Moderate', 'High']:
+        recs = recommend_funds(risk_tolerance=profile, horizon='3-Year', top_n=2)
+        print(f"\nTop Recommendations for Profile: {profile} Risk (3-Year Horizon):")
+        print(recs[['recommendation_rank', 'amfi_code', 'scheme_name', 'category', 'return_3yr_pct', 'sharpe_ratio', 'composite_score']].to_string(index=False))
+
 
 
 
