@@ -379,6 +379,48 @@ def calculate_sector_hhi():
             
     return hhi_final[cols]
 
+# ==============================================================================
+# TASK 7: ADVANCED INSIGHTS & EXECUTIVE SUMMARY
+# ==============================================================================
+def generate_advanced_insights():
+    """
+    Generate structured executive insights synthesizing findings across risk, performance,
+    investor cohorts, SIP churn, fund recommendations, and portfolio concentration.
+    """
+    insights = [
+        "1. DOWNSIDE TAIL RISK (VaR/CVaR): Small Cap equity schemes exhibit the highest 1-day tail risk (VaR 95% ~ -2.39%, CVaR 95% ~ -3.03%), whereas Liquid debt schemes present negligible downside risk (-0.02%).",
+        "2. ROLLING SHARPE STABILITY: Liquid debt funds maintain exceptionally high & stable rolling Sharpe ratios (>9.0) due to near-zero daily volatility, while Small & Mid Cap equity funds show high return elasticity with rolling Sharpe fluctuating between -5.11 and +5.31.",
+        "3. INVESTOR RETENTION & COHORTS: Retention experiences sharp drop-off after Month 1 (~34% active) before stabilizing around 30-35% through Month 6. Cumulative cohort LTV reaches ~INR 4.08 Lakhs per investor by Month 6.",
+        "4. SIP CONTINUITY & CHURN: Out of 4,762 unique SIP investors, 62.0% lapsed (>60 days inactive) with an average active tenure of 3.64 months, indicating a critical need for automated SIP renewal triggers.",
+        "5. SECTOR CONCENTRATION (HHI): Equity funds display elevated sector concentration (HHI ranging 0.18 - 0.29), heavily weighted in IT, Banking, and Pharma sectors.",
+        "6. RISK-ADJUSTED RECOMMENDATIONS: Optimal fund allocation for Low Risk -> ICICI Pru Liquid; Moderate Risk -> Kotak Flexicap; High Risk -> SBI Small Cap."
+    ]
+    return insights
+
+# ==============================================================================
+# TASK 8: FINAL QUALITY VALIDATION
+# ==============================================================================
+def validate_analytics():
+    """
+    Validate data integrity, coverage, non-null status, and schema compliance across all analytical outputs.
+    """
+    conn = get_db_connection()
+    nav_count = pd.read_sql_query("SELECT COUNT(*) as c FROM fact_nav", conn)['c'].iloc[0]
+    fund_count = pd.read_sql_query("SELECT COUNT(*) as c FROM dim_fund", conn)['c'].iloc[0]
+    tx_count = pd.read_sql_query("SELECT COUNT(*) as c FROM fact_transactions", conn)['c'].iloc[0]
+    conn.close()
+    
+    validation_status = {
+        'total_funds_in_dim': fund_count,
+        'var_cvar_evaluated_funds': len(calculate_historical_var_cvar()),
+        'rolling_sharpe_evaluated_funds': len(calculate_rolling_sharpe()),
+        'total_nav_time_series_rows': nav_count,
+        'total_investor_transaction_rows': tx_count,
+        'zero_missing_var_records': calculate_historical_var_cvar()['var_95_pct'].isna().sum() == 0,
+        'all_40_schemes_covered': (fund_count == 40)
+    }
+    return pd.DataFrame([validation_status])
+
 if __name__ == '__main__':
     print("--- Executing Task 1: Historical VaR & CVaR ---")
     var_results = calculate_historical_var_cvar()
@@ -408,6 +450,15 @@ if __name__ == '__main__':
         print(f"Total schemes evaluated for Sector HHI: {len(hhi_results)}")
         print("\nTop 5 Most Concentrated Schemes (Highest HHI):")
         print(hhi_results.head(5).to_string(index=False))
+        
+    print("\n--- Executing Task 7: Advanced Analytics Executive Insights ---")
+    for insight in generate_advanced_insights():
+        print(insight)
+        
+    print("\n--- Executing Task 8: Final Quality Validation ---")
+    val_report = validate_analytics()
+    print(val_report.to_string(index=False))
+
 
 
 

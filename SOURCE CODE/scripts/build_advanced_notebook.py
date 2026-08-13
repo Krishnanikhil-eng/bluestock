@@ -354,6 +354,51 @@ hhi_summary_table['rank'] = hhi_summary_table.index + 1
 hhi_summary_table[['rank', 'amfi_code', 'scheme_name', 'category', 'sector_hhi', 'concentration_status', 'total_sectors', 'top_sector_name', 'top_sector_weight_pct']].head(10)
 """))
 
+    # Section 10: Task 7 - Advanced Insights
+    nb.cells.append(nbf.v4.new_markdown_cell("""## 10. Advanced Analytical Insights
+
+### Synthesis & Key Strategic Takeaways:
+1. **Downside Tail Risk (VaR / CVaR)**:
+   - Small Cap Equity schemes present the highest single-day downside risk ($95\\% \\text{ VaR} \\approx -2.39\\%$, $95\\% \\text{ CVaR} \\approx -3.03\\%$).
+   - Debt/Liquid schemes exhibit near-zero daily loss potential ($95\\% \\text{ VaR} \\approx -0.02\\%$).
+2. **Rolling Sharpe Stability**:
+   - Liquid debt schemes deliver consistently high return-to-volatility ratios ($> 9.0$) due to steady daily NAV growth with near-zero standard deviation.
+   - Small and Mid Cap equity schemes show wide cyclical swings in 90-day rolling Sharpe ratios (ranging from $-5.11$ to $+5.31$).
+3. **Investor Cohort Retention & Lifetime Value**:
+   - Investor retention experiences a sharp drop after Month 1 (retaining $\\sim 34\\%$ of initial investors), then stabilizes between $30\\% - 35\\%$ through Month 6.
+   - Cumulative cohort LTV reaches $\\sim \\text{INR } 4.08 \\text{ Lakhs}$ per investor by Month 6.
+4. **SIP Continuity & Churn Management**:
+   - **$62.0\\%$** of total unique SIP investors dropped off (no deposit in $>60$ days), with an average active tenure of **3.64 months**.
+   - Immediate churn (1-month tenure) accounts for **$16.3\\%$** of all SIP signups. Automated nudges and renewal workflows are strongly recommended.
+5. **Sector HHI Concentration**:
+   - Equity schemes feature elevated sector concentration ($\text{HHI } 0.18 - 0.29$), heavily concentrated in IT, Banking, and Pharma sectors.
+6. **Risk-Adjusted Recommendations**:
+   - **Low Risk Profile**: ICICI Pru Liquid Fund
+   - **Moderate Risk Profile**: Kotak Flexicap Fund
+   - **High Risk Profile**: SBI Small Cap Fund
+"""))
+
+    # Section 11: Task 8 - Final Validation
+    nb.cells.append(nbf.v4.new_markdown_cell("""## 11. Final Validation
+
+Execute integrity checks verifying coverage across all 40 schemes, non-null risk calculations, data alignment, and notebook execution status.
+"""))
+
+    nb.cells.append(nbf.v4.new_code_cell("""# Final System Validation Report
+validation_report = pd.DataFrame([{
+    'Total Star Schema Funds': len(dim_fund),
+    'Historical VaR Schemes Evaluated': len(var_summary_table),
+    'Rolling Sharpe Schemes Evaluated': len(sharpe_summary_table),
+    'Sector HHI Schemes Evaluated': len(hhi_summary_table),
+    'Total Transaction Records Analyzed': len(fact_transactions),
+    'Total NAV Time-Series Rows': len(fact_nav),
+    'Zero Missing Values in Risk Metrics': (var_summary_table['var_95_pct'].isna().sum() == 0),
+    'All 40 Schemes Fully Covered': (len(var_summary_table) == 40 and len(sharpe_summary_table) == 40)
+}])
+
+validation_report
+"""))
+
     # Save notebook
     with open(NOTEBOOK_PATH, 'w', encoding='utf-8') as f:
         nbf.write(nb, f)
