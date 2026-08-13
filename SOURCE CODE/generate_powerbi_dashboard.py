@@ -239,8 +239,8 @@ def generate_page1():
         ax_kpi = fig.add_subplot(gs[0, i])
         draw_kpi_card(ax_kpi, title, val, yoy, sub, spark)
     
-    # 2. Middle-Left: Industry AUM Trend Line Chart (Container with clear padding)
-    ax_card_trend, ax_trend = create_card_with_plot(fig, gs[1, :2], "Industry AUM Trajectory (2022 – 2025)", "Total Assets Under Management growth in Lakh Crore ₹",
+    # 2. Middle-Left: Top 10 AMCs Combined AUM Trajectory Line Chart (Container with clear padding)
+    ax_card_trend, ax_trend = create_card_with_plot(fig, gs[1, :2], "Top 10 AMCs Combined AUM Trajectory (2022 – 2025)", "Top 10 Fund Houses AUM growth (₹62.7 L Cr vs ₹81.5 L Cr Total Industry AUM)",
                                                     top_margin=0.22, bottom_margin=0.14, left_margin=0.10, right_margin=0.05)
     
     aum_trend = aum_by_house.groupby('date')['aum_lakh_crore'].sum().reset_index()
@@ -249,7 +249,7 @@ def generate_page1():
     
     ax_trend.plot(range(len(aum_trend)), aum_trend['aum_lakh_crore'], color=PRIMARY_BLUE, linewidth=2.8, marker='o', markersize=5)
     ax_trend.fill_between(range(len(aum_trend)), aum_trend['aum_lakh_crore'], color=PRIMARY_BLUE, alpha=0.12)
-    ax_trend.set_ylabel("AUM (Lakh Crore ₹)", fontsize=8.5, fontweight='bold', color=TEXT_MUTED)
+    ax_trend.set_ylabel("Top 10 AMCs AUM (Lakh Cr ₹)", fontsize=8.0, fontweight='bold', color=TEXT_MUTED)
     
     tick_locs = range(0, len(aum_trend), max(1, len(aum_trend)//6))
     ax_trend.set_xticks(tick_locs)
@@ -259,7 +259,7 @@ def generate_page1():
     y_start, y_end = aum_trend['aum_lakh_crore'].iloc[0], aum_trend['aum_lakh_crore'].iloc[-1]
     ax_trend.annotate(f'₹{y_start:.1f} L Cr', (0, y_start), textcoords="offset points", xytext=(10, -12),
                         fontweight='bold', fontsize=8.0, color=PRIMARY_BLUE, bbox=dict(boxstyle="round,pad=0.2", fc="#EFF6FF", ec=PRIMARY_BLUE, lw=0.8))
-    ax_trend.annotate(f'₹{y_end:.1f} L Cr', (len(aum_trend)-1, y_end), textcoords="offset points", xytext=(-45, 10),
+    ax_trend.annotate(f'₹{y_end:.1f} L Cr (77% Share)', (len(aum_trend)-1, y_end), textcoords="offset points", xytext=(-75, 10),
                         fontweight='bold', fontsize=8.0, color=PRIMARY_BLUE, bbox=dict(boxstyle="round,pad=0.2", fc="#EFF6FF", ec=PRIMARY_BLUE, lw=0.8))
     
     # 3. Middle-Right: Top 10 AMCs by AUM Horizontal Bar Chart (Generous left margin for AMC labels & aligned top)
@@ -289,9 +289,9 @@ def generate_page1():
     top5_aum = amc_lakh_cr.tail(5).sum()
     top5_pct = (top5_aum / 81.50) * 100
     
-    ax_card1.text(0.05, 0.70, f"• Top 3 AMCs (SBI, ICICI, HDFC) control ₹{top3_aum:.2f} Lakh Cr ({top3_pct:.1f}% Market Share)", fontsize=8.5, fontweight='bold', color=TEXT_DARK)
-    ax_card1.text(0.05, 0.45, f"• Top 5 AMCs hold ₹{top5_aum:.2f} Lakh Cr ({top5_pct:.1f}% Market Share), demonstrating strong tier-1 concentration.", fontsize=8.5, color=TEXT_MUTED)
-    ax_card1.text(0.05, 0.20, "• Systematic retail inflows continue to consolidate within top-rated asset managers.", fontsize=8.5, color=TEXT_MUTED)
+    ax_card1.text(0.05, 0.70, f"• Top 10 AMCs account for ₹62.74 Lakh Cr (77.0% Share) of Total Industry AUM (₹81.50 Lakh Cr).", fontsize=8.5, fontweight='bold', color=TEXT_DARK)
+    ax_card1.text(0.05, 0.45, f"• Top 3 AMCs (SBI, ICICI, HDFC) control ₹{top3_aum:.2f} Lakh Cr ({top3_pct:.1f}% Industry Share).", fontsize=8.5, color=TEXT_MUTED)
+    ax_card1.text(0.05, 0.20, f"• Top 5 AMCs hold ₹{top5_aum:.2f} Lakh Cr ({top5_pct:.1f}% Industry Share), demonstrating high consolidation.", fontsize=8.5, color=TEXT_MUTED)
 
     ax_card2 = fig.add_subplot(gs[2, 2:])
     draw_card_box(ax_card2, "Retail Expansion & Structural Growth Drivers")
@@ -330,9 +330,20 @@ def generate_page2():
     ax_card_scat, ax_scatter = create_card_with_plot(fig, gs[1, :2], "Risk vs Return Profile (Quadrant Strategy Matrix)", "Bubble size = AUM (₹ Cr). Dashed lines indicate median return & volatility.",
                                                      top_margin=0.22, bottom_margin=0.14, left_margin=0.10, right_margin=0.05)
     
-    cat_palette = {'Equity': '#1E40AF', 'Debt': '#10B981', 'Hybrid': '#F59E0B', 'Solution Oriented': '#8B5CF6'}
-    med_return = scheme_performance['return_3yr_pct'].median()
-    med_risk = scheme_performance['std_dev_ann_pct'].median()
+    def map_broad_cat(cat):
+        if cat in ['Gilt', 'Short Duration', 'Liquid']:
+            return 'Debt'
+        elif cat in ['Hybrid', 'Solution Oriented', 'Arbitrage', 'Balanced Advantage']:
+            return 'Hybrid'
+        else:
+            return 'Equity'
+
+    sp_copy = scheme_performance.copy()
+    sp_copy['broad_category'] = sp_copy['category'].apply(map_broad_cat)
+
+    cat_palette = {'Equity': '#1E40AF', 'Debt': '#10B981', 'Hybrid': '#F59E0B'}
+    med_return = sp_copy['return_3yr_pct'].median()
+    med_risk = sp_copy['std_dev_ann_pct'].median()
     
     ax_scatter.axvline(med_return, color='#94A3B8', linestyle='--', linewidth=1.0)
     ax_scatter.axhline(med_risk, color='#94A3B8', linestyle='--', linewidth=1.0)
@@ -343,14 +354,17 @@ def generate_page2():
     ax_scatter.text(0.32, 0.90, "Low Return / High Risk\n(Underperformers)", transform=ax_scatter.transAxes, fontsize=7.0, color='#B91C1C', fontweight='bold')
     
     for cat, color in cat_palette.items():
-        sub = scheme_performance[scheme_performance['category'] == cat]
-        sizes = np.clip(sub['aum_crore'] / 100, 30, 350)
-        ax_scatter.scatter(sub['return_3yr_pct'], sub['std_dev_ann_pct'], s=sizes, color=color, alpha=0.75, edgecolors='#0F172A', linewidth=0.6, label=cat)
+        sub = sp_copy[sp_copy['broad_category'] == cat]
+        if len(sub) > 0:
+            sizes = np.clip(sub['aum_crore'] / 100, 40, 350)
+            ax_scatter.scatter(sub['return_3yr_pct'], sub['std_dev_ann_pct'], s=sizes, color=color, alpha=0.75, edgecolors='#0F172A', linewidth=0.6, label=cat)
     
-    top_funds = scheme_performance.sort_values('return_3yr_pct', ascending=False).head(3)
-    for _, row in top_funds.iterrows():
-        ax_scatter.annotate(row['scheme_name'].split('-')[0].strip(), (row['return_3yr_pct'], row['std_dev_ann_pct']),
-                            xytext=(5, 5), textcoords='offset points', fontsize=7.0, fontweight='bold', color=TEXT_DARK)
+    top_funds = sp_copy.sort_values('return_3yr_pct', ascending=False).head(3)
+    offsets = [(5, 8), (5, -12), (-45, 8)]
+    for idx, (_, row) in enumerate(top_funds.iterrows()):
+        short_name = row['scheme_name'].split('-')[0].strip()
+        ax_scatter.annotate(short_name, (row['return_3yr_pct'], row['std_dev_ann_pct']),
+                            xytext=offsets[idx % len(offsets)], textcoords='offset points', fontsize=7.0, fontweight='bold', color=TEXT_DARK)
         
     ax_scatter.set_xlabel("3-Year Trailing Return (%)", fontsize=8.0, fontweight='bold', color=TEXT_MUTED)
     ax_scatter.set_ylabel("Annualized Volatility (%)", fontsize=8.0, fontweight='bold', color=TEXT_MUTED)
@@ -390,9 +404,10 @@ def generate_page2():
     matrix_df['aum_crore'] = matrix_df['aum_crore'].map('₹{:,.0f} Cr'.format)
     
     col_labels = ['Scheme Name', 'Fund House', 'Category', 'Plan', '3Yr Return (%)', 'Risk StdDev (%)', 'Sharpe Ratio', 'AUM (₹ Cr)']
+    col_widths = [0.28, 0.16, 0.12, 0.08, 0.11, 0.11, 0.07, 0.07]
     cell_text = matrix_df.values.tolist()
     
-    tab = ax_matrix.table(cellText=cell_text, colLabels=col_labels, loc='center', cellLoc='left')
+    tab = ax_matrix.table(cellText=cell_text, colLabels=col_labels, colWidths=col_widths, loc='center', cellLoc='left')
     tab.auto_set_font_size(False)
     tab.set_fontsize(8)
     tab.scale(1.0, 1.35)
