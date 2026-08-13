@@ -185,6 +185,66 @@ def analyze_investor_cohorts():
     
     return cohort_summary, retention_matrix.round(1), cohort_ltv.round(0)
 
+# ==============================================================================
+# TASK 4: SIP CONTINUITY & CHURN ANALYSIS
+# ==============================================================================
+def analyze_sip_continuity():
+    """
+    Analyze systematic investment plan (SIP) continuity, investor tenure, drop-off behavior,
+    and compute overall SIP churn rate across the transaction dataset.
+    """
+    conn = get_db_connection()
+    tx_df = pd.read_sql_query("SELECT investor_id, transaction_date, amount_inr, transaction_type FROM fact_transactions", conn)
+    conn.close()
+    
+    tx_df['transaction_date'] = pd.to_datetime(tx_df['transaction_date'])
+    tx_df['tx_month'] = tx_df['transaction_date'].dt.to_period('M')
+    
+    # Filter SIP transactions only
+    sip_df = tx_df[tx_df['transaction_type'] == 'SIP'].copy()
+    
+    total_sip_investors = sip_df['investor_id'].nunique()
+    total_sip_transactions = len(sip_df)
+    total_sip_capital_cr = sip_df['amount_inr'].sum() / 1e7
+    
+    # Calculate active SIP months per investor
+    investor_sip_months = sip_df.groupby('investor_id')['tx_month'].nunique()
+    
+    # Tenure distribution
+    tenure_1m = (investor_sip_months == 1).sum()
+    tenure_2_5m = ((investor_sip_months >= 2) & (investor_sip_months <= 5)).sum()
+    tenure_6_11m = ((investor_sip_months >= 6) & (investor_sip_months <= 11)).sum()
+    tenure_12m_plus = (investor_sip_months >= 12).sum()
+    
+    # Identify inactive / churned SIP investors (No SIP transaction in the last 60 days of dataset)
+    max_tx_date = tx_df['transaction_date'].max()
+    last_sip_per_investor = sip_df.groupby('investor_id')['transaction_date'].max()
+    days_since_last_sip = (max_tx_date - last_sip_per_investor).dt.days
+    
+    churned_investors = (days_since_last_sip > 60).sum()
+    active_investors = total_sip_investors - churned_investors
+    sip_churn_rate_pct = (churned_investors / total_sip_investors) * 100
+    
+    sip_metrics = pd.DataFrame([{
+        'metric': 'Total Unique SIP Investors', 'value': f"{total_sip_investors:,}"
+    }, {
+        'metric': 'Total SIP Transactions Executed', 'value': f"{total_sip_transactions:,}"
+    }, {
+        'metric': 'Total SIP Capital Mobilized (INR Cr)', 'value': f"INR {total_sip_capital_cr:,.2f} Cr"
+    }, {
+        'metric': 'Average Active SIP Tenure (Months)', 'value': f"{investor_sip_months.mean():.2f} Months"
+    }, {
+        'metric': 'Active SIP Investors (Last 60 Days)', 'value': f"{active_investors:,} ({(100 - sip_churn_rate_pct):.1f}%)"
+    }, {
+        'metric': 'Churned/Lapsed SIP Investors (>60 Days Inactive)', 'value': f"{churned_investors:,} ({sip_churn_rate_pct:.1f}%)"
+    }, {
+        'metric': 'Investors with 1 Month Tenure (Immediate Churn)', 'value': f"{tenure_1m:,} ({(tenure_1m/total_sip_investors*100):.1f}%)"
+    }, {
+        'metric': 'Investors with 12+ Months Tenure (High Loyalty)', 'value': f"{tenure_12m_plus:,} ({(tenure_12m_plus/total_sip_investors*100):.1f}%)"
+    }])
+    
+    return sip_metrics
+
 if __name__ == '__main__':
     print("--- Executing Task 1: Historical VaR & CVaR ---")
     var_results = calculate_historical_var_cvar()
@@ -197,7 +257,10 @@ if __name__ == '__main__':
     print("\n--- Executing Task 3: Investor Cohort Analysis ---")
     cohort_summary, retention_mat, ltv_mat = analyze_investor_cohorts()
     print(f"Evaluated {len(cohort_summary)} monthly cohorts.")
-    print("\nInvestor Acquisition Cohort Summary:")
-    print(cohort_summary.to_string(index=False))
+    
+    print("\n--- Executing Task 4: SIP Continuity & Churn Analysis ---")
+    sip_metrics = analyze_sip_continuity()
+    print(sip_metrics.to_string(index=False))
+
 
 

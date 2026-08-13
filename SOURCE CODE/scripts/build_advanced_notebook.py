@@ -227,6 +227,47 @@ cohort_summary_table = pd.DataFrame({
 cohort_summary_table
 """))
 
+    # Section 7: Task 4 - SIP Continuity Analysis
+    nb.cells.append(nbf.v4.new_markdown_cell("""## 7. SIP Continuity & Churn Analysis
+
+### Methodology & Business Metrics:
+1. **SIP Filtering**: Standardize `transaction_type == 'SIP'` records across 32,778 transaction logs.
+2. **SIP Active Tenure**: Unique calendar months of active SIP deposits per investor.
+3. **SIP Churn Condition**: Investors whose last SIP installment occurred > 60 days prior to the maximum dataset date (`2025-05-31`).
+4. **Tenure Segmentation**: Categorized into `1 Month` (Immediate Churn), `2-5 Months`, `6-11 Months`, and `12+ Months` (Loyal Investors).
+"""))
+
+    nb.cells.append(nbf.v4.new_code_cell("""# Execute SIP Continuity & Churn Analytics
+sip_txs = fact_transactions[fact_transactions['transaction_type'] == 'SIP'].copy()
+sip_txs['tx_month'] = sip_txs['transaction_date'].dt.to_period('M')
+
+total_sip_users = sip_txs['investor_id'].nunique()
+total_sip_txs = len(sip_txs)
+total_sip_val = sip_txs['amount_inr'].sum() / 1e7
+
+investor_tenure_months = sip_txs.groupby('investor_id')['tx_month'].nunique()
+
+max_dataset_date = fact_transactions['transaction_date'].max()
+last_sip_date = sip_txs.groupby('investor_id')['transaction_date'].max()
+lapsed_days = (max_dataset_date - last_sip_date).dt.days
+
+churned_users = (lapsed_days > 60).sum()
+churn_rate = (churned_users / total_sip_users) * 100
+
+sip_kpi_summary = pd.DataFrame([
+    {'Metric': 'Total Unique SIP Investors', 'Value': f"{total_sip_users:,}"},
+    {'Metric': 'Total SIP Transactions Executed', 'Value': f"{total_sip_txs:,}"},
+    {'Metric': 'Total SIP Capital Mobilized', 'Value': f"₹{total_sip_val:,.2f} Cr"},
+    {'Metric': 'Average SIP Tenure per Investor', 'Value': f"{investor_tenure_months.mean():.2f} Months"},
+    {'Metric': 'Active SIP Investors (Last 60 Days)', 'Value': f"{(total_sip_users - churned_users):,} ({(100 - churn_rate):.1f}%)"},
+    {'Metric': 'Churned SIP Investors (>60 Days Inactive)', 'Value': f"{churned_users:,} ({churn_rate:.1f}%)"},
+    {'Metric': '1-Month Immediate Churn Count', 'Value': f"{(investor_tenure_months == 1).sum():,} ({(investor_tenure_months == 1).sum()/total_sip_users*100:.1f}%)"},
+    {'Metric': '12+ Month Loyal SIP Investors', 'Value': f"{(investor_tenure_months >= 12).sum():,} ({(investor_tenure_months >= 12).sum()/total_sip_users*100:.1f}%)"}
+])
+
+sip_kpi_summary
+"""))
+
     # Save notebook
     with open(NOTEBOOK_PATH, 'w', encoding='utf-8') as f:
         nbf.write(nb, f)
