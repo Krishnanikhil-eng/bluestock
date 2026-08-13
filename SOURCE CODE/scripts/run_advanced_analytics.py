@@ -82,11 +82,75 @@ def calculate_historical_var_cvar(confidence_level=0.95):
     
     return final_df
 
+# ==============================================================================
+# TASK 2: ROLLING 90-DAY SHARPE RATIO
+# ==============================================================================
+def calculate_rolling_sharpe(window=90):
+    """
+    Calculate 90-day rolling Sharpe ratio time series for all schemes.
+    
+    Formula (Primary Methodology):
+      rolling_sharpe = returns.rolling(90).mean() / returns.rolling(90).std() * sqrt(252)
+      
+    Also provides separate optional calculation subtracting annual risk-free rate (6.5%).
+    """
+    conn = get_db_connection()
+    nav_df = pd.read_sql_query("SELECT amfi_code, date, nav FROM fact_nav", conn)
+    fund_df = pd.read_sql_query("SELECT amfi_code, scheme_name, fund_house, category FROM dim_fund", conn)
+    conn.close()
+    
+    nav_df['date'] = pd.to_datetime(nav_df['date'])
+    nav_df = nav_df.sort_values(['amfi_code', 'date'])
+    nav_df['daily_return'] = nav_df.groupby('amfi_code')['nav'].pct_change() * 100
+    
+    sharpe_summary = []
+    
+    for amfi_code, group in nav_df.groupby('amfi_code'):
+        rets = group['daily_return']
+        r_mean = rets.rolling(window).mean()
+        r_std = rets.rolling(window).std()
+        
+        # Primary formula (zero risk-free baseline)
+        r_sharpe = (r_mean / r_std) * np.sqrt(252)
+        r_sharpe_clean = r_sharpe.dropna()
+        
+        # Optional risk-free rate adjusted formula (6.5% annual r_f => ~0.0258% daily r_f)
+        daily_rf = 6.5 / 252
+        r_sharpe_rf = ((r_mean - daily_rf) / r_std) * np.sqrt(252)
+        r_sharpe_rf_clean = r_sharpe_rf.dropna()
+        
+        if len(r_sharpe_clean) > 0:
+            sharpe_summary.append({
+                'amfi_code': amfi_code,
+                'mean_rolling_sharpe': round(r_sharpe_clean.mean(), 2),
+                'std_rolling_sharpe': round(r_sharpe_clean.std(), 2),
+                'min_rolling_sharpe': round(r_sharpe_clean.min(), 2),
+                'max_rolling_sharpe': round(r_sharpe_clean.max(), 2),
+                'latest_rolling_sharpe': round(r_sharpe_clean.iloc[-1], 2),
+                'mean_rolling_sharpe_rf_adj': round(r_sharpe_rf_clean.mean(), 2) if len(r_sharpe_rf_clean) > 0 else np.nan,
+                'rolling_windows_evaluated': len(r_sharpe_clean)
+            })
+            
+    summary_df = pd.DataFrame(sharpe_summary).merge(fund_df, on='amfi_code', how='right')
+    summary_df = summary_df.sort_values('mean_rolling_sharpe', ascending=False).reset_index(drop=True)
+    summary_df['rank'] = summary_df.index + 1
+    
+    cols = ['rank', 'amfi_code', 'scheme_name', 'category', 'mean_rolling_sharpe', 'std_rolling_sharpe', 
+            'min_rolling_sharpe', 'max_rolling_sharpe', 'latest_rolling_sharpe', 'mean_rolling_sharpe_rf_adj']
+    return summary_df[cols]
+
 if __name__ == '__main__':
     print("--- Executing Task 1: Historical VaR & CVaR ---")
     var_results = calculate_historical_var_cvar()
     print(f"Total schemes evaluated: {len(var_results)}")
     print("\nTop 5 Highest Downside Risk Schemes (Worst VaR 95%):")
     print(var_results.head(5).to_string(index=False))
-    print("\nTop 5 Safest Downside Risk Schemes (Lowest VaR 95%):")
-    print(var_results.tail(5).to_string(index=False))
+    
+    print("\n--- Executing Task 2: Rolling 90-Day Sharpe Ratio ---")
+    sharpe_results = calculate_rolling_sharpe()
+    print(f"Total schemes evaluated: {len(sharpe_results)}")
+    print("\nTop 5 Schemes by Mean 90-Day Rolling Sharpe:")
+    print(sharpe_results.head(5).to_string(index=False))
+    print("\nBottom 5 Schemes by Mean 90-Day Rolling Sharpe:")
+    print(sharpe_results.tail(5).to_string(index=False))
+

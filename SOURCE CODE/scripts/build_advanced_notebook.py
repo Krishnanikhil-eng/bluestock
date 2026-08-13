@@ -131,6 +131,60 @@ var_summary_table.head(10)
 var_summary_table.tail(5)
 """))
 
+    # Section 5: Task 2 - Rolling 90-Day Sharpe
+    nb.cells.append(nbf.v4.new_markdown_cell("""## 5. Rolling 90-Day Sharpe Ratio
+
+### Methodology:
+1. **Primary Rolling Sharpe Formula**:
+   $$\\text{Rolling Sharpe} = \\frac{\\text{returns.rolling(90).mean()}}{\\text{returns.rolling(90).std()}} \\times \\sqrt{252}$$
+   - *Note*: Per project specification, the primary calculation evaluates return-to-volatility ratio directly without subtracting risk-free rate.
+2. **Optional Risk-Free Rate Adjusted Formula** (Shown separately for comparison):
+   $$\\text{Rolling Sharpe}_{rf} = \\frac{\\text{returns.rolling(90).mean()} - r_{f,\\text{daily}}}{\\text{returns.rolling(90).std()}} \\times \\sqrt{252}$$
+   - Where $r_{f,\\text{annual}} = 6.5\\% \\implies r_{f,\\text{daily}} = \\frac{6.5\\%}{252} \\approx 0.0258\\%$.
+3. **Consistency & Stability Metrics**: Evaluates `mean`, `std`, `min`, `max`, and `latest` rolling 90-day Sharpe ratios to separate consistently performing funds from volatile/unstable funds.
+"""))
+
+    nb.cells.append(nbf.v4.new_code_cell("""# Calculate 90-day rolling Sharpe metrics per scheme
+window = 90
+sharpe_results = []
+
+for amfi_code, group in fact_nav.groupby('amfi_code'):
+    rets = group['daily_return']
+    r_mean = rets.rolling(window).mean()
+    r_std = rets.rolling(window).std()
+    
+    # Primary formula
+    r_sharpe = (r_mean / r_std) * np.sqrt(252)
+    r_sharpe_clean = r_sharpe.dropna()
+    
+    # Optional RF adjusted formula
+    daily_rf = 6.5 / 252
+    r_sharpe_rf = ((r_mean - daily_rf) / r_std) * np.sqrt(252)
+    r_sharpe_rf_clean = r_sharpe_rf.dropna()
+    
+    if len(r_sharpe_clean) > 0:
+        sharpe_results.append({
+            'amfi_code': amfi_code,
+            'mean_rolling_sharpe': round(r_sharpe_clean.mean(), 2),
+            'std_rolling_sharpe': round(r_sharpe_clean.std(), 2),
+            'min_rolling_sharpe': round(r_sharpe_clean.min(), 2),
+            'max_rolling_sharpe': round(r_sharpe_clean.max(), 2),
+            'latest_rolling_sharpe': round(r_sharpe_clean.iloc[-1], 2),
+            'mean_rolling_sharpe_rf_adj': round(r_sharpe_rf_clean.mean(), 2) if len(r_sharpe_rf_clean) > 0 else np.nan,
+            'rolling_windows_evaluated': len(r_sharpe_clean)
+        })
+
+sharpe_summary_table = pd.DataFrame(sharpe_results).merge(dim_fund[['amfi_code', 'scheme_name', 'category']], on='amfi_code', how='right')
+sharpe_summary_table = sharpe_summary_table.sort_values('mean_rolling_sharpe', ascending=False).reset_index(drop=True)
+sharpe_summary_table['rank'] = sharpe_summary_table.index + 1
+
+cols = ['rank', 'amfi_code', 'scheme_name', 'category', 'mean_rolling_sharpe', 'std_rolling_sharpe', 'min_rolling_sharpe', 'max_rolling_sharpe', 'latest_rolling_sharpe', 'mean_rolling_sharpe_rf_adj']
+sharpe_summary_table = sharpe_summary_table[cols]
+
+# Display Top 10 Funds by Mean 90-Day Rolling Sharpe Ratio
+sharpe_summary_table.head(10)
+"""))
+
     # Save notebook
     with open(NOTEBOOK_PATH, 'w', encoding='utf-8') as f:
         nbf.write(nb, f)
