@@ -156,11 +156,23 @@ Average SIP Amount Display = FORMAT([Average SIP Amount], "₹#,##0")
 ```dax
 Total Category Inflow = SUM(fact_category_inflows[net_inflow_crore])
 
+// Quarterly Aggregated Category Net Inflow
+Quarterly Category Inflow = 
+CALCULATE(
+    SUM(fact_category_inflows[net_inflow_crore]),
+    ALLEXCEPT(fact_category_inflows, dim_date[fiscal_quarter], dim_fund[category])
+)
+
 Top 5 Category Inflow FY25 = 
 CALCULATE(
     SUM(fact_category_inflows[net_inflow_crore]),
     KEEPFILTERS(TOPN(5, ALL(fact_category_inflows[category]), SUM(fact_category_inflows[net_inflow_crore]), DESC))
 )
+
+Top 5 Category Share % = 
+VAR CatInflow = SUM(fact_category_inflows[net_inflow_crore])
+VAR TotalTop5Inflow = CALCULATE(SUM(fact_category_inflows[net_inflow_crore]), ALLSELECTED(fact_category_inflows[category]))
+RETURN DIVIDE(CatInflow, TotalTop5Inflow, 0)
 ```
 
 ---
@@ -168,7 +180,7 @@ CALCULATE(
 ## 🎨 5. Dashboard Pages & Visual Configurations
 
 ### 📄 Page 1: Industry Overview
-* **KPI Cards (Top):** Total AUM (₹81L Cr), SIP Inflows (₹31K Cr), Folios (26.12 Cr), Schemes (1,908).
+* **KPI Cards (Top):** Total AUM (₹81.50L Cr), SIP Inflows (₹31K Cr), Folios (26.12 Cr), Active Schemes (1,908).
 * **Line Chart:** Industry AUM Trend (2022–2025).
 * **Bar Chart:** AUM by AMC / Fund House (Sorted descending).
 
@@ -186,9 +198,10 @@ CALCULATE(
 * **Line Chart:** Monthly Transaction Volume.
 
 ### 📄 Page 4: SIP & Market Trends
-* **Combo Chart:** SIP Inflow (Columns) + Nifty 50 Index (Line on Secondary Y-Axis) (2022–2025).
-* **Heatmap / Matrix:** Category Inflows by Year/Quarter.
-* **Bar Chart:** Top 5 Categories by Net Inflow FY25 (`Is Top 5 Category FY25 = 1`).
+* **KPI Cards (Top):** Latest Monthly SIP (₹31,002 Cr), Total SIP AUM (₹15.90 Lakh Cr - 19.5% of AUM), Top Equity Category Inflow (Sectoral/Thematic ₹1,03,829 Cr), Benchmark Nifty 50 (24,250 Pts).
+* **Combo Chart:** Monthly SIP Inflows (Columns) + Nifty 50 Index (Line on Secondary Y-Axis) (CY24–CY25 24-Month Horizon).
+* **Heatmap Matrix:** Quarterly Category Net Inflows across FY25 Quarters (Q1–Q4 FY25).
+* **Bar Chart:** Top Categories by Net Inflow FY25 (With exact ₹ Cr values, % Share of Top 5, and Institutional Treasury Callout Box).
 
 ### 📄 Drill-Through Page: NAV Detail
 * Target Field: `dim_fund[amfi_code]`.
