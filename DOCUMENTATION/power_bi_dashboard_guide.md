@@ -107,13 +107,13 @@ IF(
     CALCULATE(SUM(fact_performance[aum_crore]), REMOVEFILTERS(dim_date))
 )
 
-Total AUM Display = FORMAT([Total AUM] / 100000, "₹#,##0.00") & " L Cr"
+Total AUM Display = FORMAT([Total AUM] / 100000, "₹#,##0.00") & " Lakh Cr"
 
 Total SIP Inflow = SUM(fact_sip_inflows[sip_inflow_crore])
 
 Total SIP Inflow Display = FORMAT([Total SIP Inflow], "₹#,##0") & " Cr"
 
-Total Folios = 26.12 // Reference value or MAX('06_industry_folio_count'[total_folios_crore])
+Total Folios = MAX(fact_sip_inflows[active_sip_accounts_crore]) // 26.12 Cr Industry Total
 Total Folios Display = FORMAT([Total Folios], "0.00") & " Cr"
 
 Total Schemes Count = DISTINCTCOUNT(dim_fund[amfi_code])
@@ -129,7 +129,9 @@ Latest NAV =
 VAR MaxDate = MAX(fact_nav[date])
 RETURN CALCULATE(MAX(fact_nav[nav]), fact_nav[date] = MaxDate)
 
-Fund Score = 
+Sharpe Ratio Avg = AVERAGE(fact_performance[sharpe_ratio])
+
+Fund Performance Rank = 
 VAR ReturnScore = RANKX(ALLSELECTED(dim_fund), [Avg 3Yr Return], , DESC)
 VAR RiskScore = RANKX(ALLSELECTED(dim_fund), [Avg Risk StdDev], , ASC)
 RETURN (ReturnScore * 0.6) + (RiskScore * 0.4)
@@ -138,6 +140,7 @@ RETURN (ReturnScore * 0.6) + (RiskScore * 0.4)
 ### 4.3 Investor Analytics Measures
 ```dax
 Total Transaction Amount = SUM(fact_transactions[amount_inr])
+Total Transaction Amount Cr = SUM(fact_transactions[amount_inr]) / 10000000
 
 Total Transaction Count = COUNTROWS(fact_transactions)
 
@@ -146,21 +149,18 @@ CALCULATE(
     AVERAGE(fact_transactions[amount_inr]),
     fact_transactions[transaction_type] = "SIP"
 )
+Average SIP Amount Display = FORMAT([Average SIP Amount], "₹#,##0")
 ```
 
 ### 4.4 Market Trends Measures
 ```dax
 Total Category Inflow = SUM(fact_category_inflows[net_inflow_crore])
 
-Is Top 5 Category FY25 = 
-VAR CategoryRank = 
-    RANKX(
-        ALL(fact_category_inflows[category]),
-        CALCULATE(SUM(fact_category_inflows[net_inflow_crore]), dim_date[year] = 2025),
-        ,
-        DESC
-    )
-RETURN IF(CategoryRank <= 5, 1, 0)
+Top 5 Category Inflow FY25 = 
+CALCULATE(
+    SUM(fact_category_inflows[net_inflow_crore]),
+    KEEPFILTERS(TOPN(5, ALL(fact_category_inflows[category]), SUM(fact_category_inflows[net_inflow_crore]), DESC))
+)
 ```
 
 ---
