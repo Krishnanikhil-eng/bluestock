@@ -359,12 +359,30 @@ def generate_page2():
             sizes = np.clip(sub['aum_crore'] / 100, 40, 350)
             ax_scatter.scatter(sub['return_3yr_pct'], sub['std_dev_ann_pct'], s=sizes, color=color, alpha=0.75, edgecolors='#0F172A', linewidth=0.6, label=cat)
     
-    top_funds = sp_copy.sort_values('return_3yr_pct', ascending=False).head(3)
-    offsets = [(5, 8), (5, -12), (-45, 8)]
-    for idx, (_, row) in enumerate(top_funds.iterrows()):
-        short_name = row['scheme_name'].split('-')[0].strip()
-        ax_scatter.annotate(short_name, (row['return_3yr_pct'], row['std_dev_ann_pct']),
-                            xytext=offsets[idx % len(offsets)], textcoords='offset points', fontsize=7.0, fontweight='bold', color=TEXT_DARK)
+    # Selective, clean callout annotations for key representative funds to prevent label overcrowding
+    # 1. Top Returner in High Return / High Risk quadrant
+    top_ret_row = sp_copy.sort_values('return_3yr_pct', ascending=False).iloc[0]
+    ax_scatter.annotate(f"{top_ret_row['scheme_name'].split('-')[0].strip()} ({top_ret_row['return_3yr_pct']:.1f}%)",
+                        (top_ret_row['return_3yr_pct'], top_ret_row['std_dev_ann_pct']),
+                        xytext=(-125, -16), textcoords='offset points', fontsize=7.0, fontweight='bold', color='#1E3A8A',
+                        bbox=dict(boxstyle="round,pad=0.25", fc="#EFF6FF", ec="#1E3A8A", lw=0.6),
+                        arrowprops=dict(arrowstyle="->", color="#1E3A8A", lw=0.8))
+
+    # 2. Key Equity Fund in High Return / Low Risk (Star Performers)
+    star_row = sp_copy[sp_copy['category'] == 'Large Cap'].sort_values('return_3yr_pct', ascending=False).iloc[0]
+    ax_scatter.annotate(f"{star_row['scheme_name'].split('-')[0].strip()}",
+                        (star_row['return_3yr_pct'], star_row['std_dev_ann_pct']),
+                        xytext=(12, -14), textcoords='offset points', fontsize=7.0, fontweight='bold', color='#15803D',
+                        bbox=dict(boxstyle="round,pad=0.25", fc="#DCFCE7", ec="#15803D", lw=0.6),
+                        arrowprops=dict(arrowstyle="->", color="#15803D", lw=0.8))
+
+    # 3. Key Debt Fund in Low Return / Low Risk quadrant
+    debt_row = sp_copy[sp_copy['broad_category'] == 'Debt'].sort_values('aum_crore', ascending=False).iloc[0]
+    ax_scatter.annotate(f"{debt_row['scheme_name'].split('-')[0].strip()}",
+                        (debt_row['return_3yr_pct'], debt_row['std_dev_ann_pct']),
+                        xytext=(15, 10), textcoords='offset points', fontsize=7.0, fontweight='bold', color='#475569',
+                        bbox=dict(boxstyle="round,pad=0.25", fc="#F1F5F9", ec="#94A3B8", lw=0.6),
+                        arrowprops=dict(arrowstyle="->", color="#94A3B8", lw=0.8))
         
     ax_scatter.set_xlabel("3-Year Trailing Return (%)", fontsize=8.0, fontweight='bold', color=TEXT_MUTED)
     ax_scatter.set_ylabel("Annualized Volatility (%)", fontsize=8.0, fontweight='bold', color=TEXT_MUTED)
