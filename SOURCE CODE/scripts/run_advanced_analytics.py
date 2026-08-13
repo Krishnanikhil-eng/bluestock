@@ -305,6 +305,80 @@ def recommend_funds(risk_tolerance='Moderate', horizon='3-Year', top_n=3):
     
     return recs[cols]
 
+# ==============================================================================
+# TASK 6: SECTOR HHI (HERFINDAHL-HIRSCHMAN INDEX) CONCENTRATION
+# ==============================================================================
+def calculate_sector_hhi():
+    """
+    Calculate Sector Herfindahl-Hirschman Index (HHI) for mutual funds.
+    Aggregates stock holdings by sector before computing normalized HHI.
+    
+    Formula:
+      HHI = sum( (sector_weight_pct / 100) ** 2 )
+      
+    Concentration Thresholds:
+      - High Concentration: HHI > 0.18
+      - Moderate Concentration: 0.10 <= HHI <= 0.18
+      - Well-Diversified: HHI < 0.10
+    """
+    ph_path = os.path.join(RAW_DATA_DIR, '09_portfolio_holdings.csv')
+    if not os.path.exists(ph_path):
+        print(f"Warning: {ph_path} not found.")
+        return None
+        
+    ph_df = pd.read_csv(ph_path)
+    
+    # 1. Aggregate stock weights by amfi_code + sector
+    sector_weights = ph_df.groupby(['amfi_code', 'sector'])['weight_pct'].sum().reset_index()
+    
+    # 2. Check whether fund sector weights sum approximately to 100%
+    fund_sector_sums = sector_weights.groupby('amfi_code')['weight_pct'].sum()
+    
+    # 3. Calculate normalized HHI per scheme
+    hhi_list = []
+    for amfi_code, group in sector_weights.groupby('amfi_code'):
+        total_w = fund_sector_sums.loc[amfi_code]
+        # Normalized weight = weight_pct / 100
+        weights_decimal = group['weight_pct'] / 100.0
+        hhi_val = (weights_decimal ** 2).sum()
+        
+        num_sectors = group['sector'].nunique()
+        top_sector = group.sort_values('weight_pct', ascending=False).iloc[0]
+        
+        # Classification
+        if hhi_val > 0.18:
+            status = 'High Concentration'
+        elif hhi_val >= 0.10:
+            status = 'Moderate Concentration'
+        else:
+            status = 'Well-Diversified'
+            
+        hhi_list.append({
+            'amfi_code': amfi_code,
+            'sector_hhi': round(hhi_val, 4),
+            'concentration_status': status,
+            'total_sectors': num_sectors,
+            'top_sector_name': top_sector['sector'],
+            'top_sector_weight_pct': round(top_sector['weight_pct'], 2),
+            'total_portfolio_weight_sum': round(total_w, 2)
+        })
+        
+    hhi_df = pd.DataFrame(hhi_list)
+    
+    # Merge scheme metadata
+    conn = get_db_connection()
+    fund_df = pd.read_sql_query("SELECT amfi_code, scheme_name, category FROM dim_fund", conn)
+    conn.close()
+    
+    hhi_final = hhi_df.merge(fund_df, on='amfi_code', how='left')
+    hhi_final = hhi_final.sort_values('sector_hhi', ascending=False).reset_index(drop=True)
+    hhi_final['rank'] = hhi_final.index + 1
+    
+    cols = ['rank', 'amfi_code', 'scheme_name', 'category', 'sector_hhi', 'concentration_status', 
+            'total_sectors', 'top_sector_name', 'top_sector_weight_pct', 'total_portfolio_weight_sum']
+            
+    return hhi_final[cols]
+
 if __name__ == '__main__':
     print("--- Executing Task 1: Historical VaR & CVaR ---")
     var_results = calculate_historical_var_cvar()
@@ -327,6 +401,14 @@ if __name__ == '__main__':
         recs = recommend_funds(risk_tolerance=profile, horizon='3-Year', top_n=2)
         print(f"\nTop Recommendations for Profile: {profile} Risk (3-Year Horizon):")
         print(recs[['recommendation_rank', 'amfi_code', 'scheme_name', 'category', 'return_3yr_pct', 'sharpe_ratio', 'composite_score']].to_string(index=False))
+        
+    print("\n--- Executing Task 6: Sector HHI Concentration Analysis ---")
+    hhi_results = calculate_sector_hhi()
+    if hhi_results is not None:
+        print(f"Total schemes evaluated for Sector HHI: {len(hhi_results)}")
+        print("\nTop 5 Most Concentrated Schemes (Highest HHI):")
+        print(hhi_results.head(5).to_string(index=False))
+
 
 
 

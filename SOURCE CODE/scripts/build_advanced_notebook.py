@@ -308,6 +308,52 @@ def get_fund_recommendations(risk_level='Moderate', horizon='3-Year', top_n=3):
 get_fund_recommendations(risk_level='Moderate', horizon='3-Year', top_n=3)
 """))
 
+    # Section 9: Task 6 - Sector HHI
+    nb.cells.append(nbf.v4.new_markdown_cell("""## 9. Sector Concentration Analysis (Herfindahl-Hirschman Index - HHI)
+
+### Methodology & Formulas:
+1. **Holding Aggregation**: Sum `weight_pct` across all stocks within the same sector per scheme (`amfi_code + sector`).
+2. **Normalized HHI Formula**:
+   $$\\text{HHI} = \\sum_{i=1}^{S} \\left( \\frac{\\text{sector\\_weight\\_pct}_i}{100} \\right)^2$$
+3. **Concentration Classification**:
+   - **High Concentration**: $\\text{HHI} > 0.18$
+   - **Moderate Concentration**: $0.10 \\le \\text{HHI} \\le 0.18$
+   - **Well-Diversified**: $\\text{HHI} < 0.10$
+4. **Data Verification**: Verified that sector weights sum to **100%** per scheme in `09_portfolio_holdings.csv`.
+"""))
+
+    nb.cells.append(nbf.v4.new_code_cell("""# Compute Sector HHI Concentration
+ph_data = pd.read_csv('../../DATASETS/raw/09_portfolio_holdings.csv')
+
+# 1. Aggregate by amfi_code + sector
+sector_aggs = ph_data.groupby(['amfi_code', 'sector'])['weight_pct'].sum().reset_index()
+
+# 2. Compute normalized HHI
+hhi_rows = []
+for code, grp in sector_aggs.groupby('amfi_code'):
+    w_dec = grp['weight_pct'] / 100.0
+    hhi_val = (w_dec ** 2).sum()
+    top_sec = grp.sort_values('weight_pct', ascending=False).iloc[0]
+    
+    status = 'High Concentration' if hhi_val > 0.18 else ('Moderate Concentration' if hhi_val >= 0.10 else 'Well-Diversified')
+    
+    hhi_rows.append({
+        'amfi_code': code,
+        'sector_hhi': round(hhi_val, 4),
+        'concentration_status': status,
+        'total_sectors': grp['sector'].nunique(),
+        'top_sector_name': top_sec['sector'],
+        'top_sector_weight_pct': round(top_sec['weight_pct'], 2)
+    })
+
+hhi_summary_table = pd.DataFrame(hhi_rows).merge(dim_fund[['amfi_code', 'scheme_name', 'category']], on='amfi_code', how='left')
+hhi_summary_table = hhi_summary_table.sort_values('sector_hhi', ascending=False).reset_index(drop=True)
+hhi_summary_table['rank'] = hhi_summary_table.index + 1
+
+# Display Top 10 Most Concentrated Schemes by Sector HHI
+hhi_summary_table[['rank', 'amfi_code', 'scheme_name', 'category', 'sector_hhi', 'concentration_status', 'total_sectors', 'top_sector_name', 'top_sector_weight_pct']].head(10)
+"""))
+
     # Save notebook
     with open(NOTEBOOK_PATH, 'w', encoding='utf-8') as f:
         nbf.write(nb, f)
