@@ -182,22 +182,19 @@ def analyze_sip_continuity_qualifying(min_sips=6, gap_threshold=35):
     tx_df['transaction_date'] = pd.to_datetime(tx_df['transaction_date'])
     sip_df = tx_df[tx_df['transaction_type'] == 'SIP'].sort_values(['investor_id', 'transaction_date'])
     
-    sip_counts = sip_df.groupby('investor_id')['transaction_date'].count()
-    qualifying_investors = sip_counts[sip_counts >= min_sips].index
-    
     investor_results = []
-    for inv_id in qualifying_investors:
-        sub = sip_df[sip_df['investor_id'] == inv_id].sort_values('transaction_date')
-        gaps = sub['transaction_date'].diff().dt.days.dropna()
-        avg_gap = gaps.mean()
-        status = 'At-Risk' if avg_gap > gap_threshold else 'Consistent'
-        investor_results.append({
-            'investor_id': inv_id,
-            'sip_transaction_count': len(sub),
-            'average_gap_days': round(avg_gap, 1),
-            'continuity_status': status
-        })
-        
+    for inv_id, sub in sip_df.groupby('investor_id'):
+        if len(sub) >= min_sips:
+            gaps = sub['transaction_date'].diff().dt.days.dropna()
+            avg_gap = gaps.mean()
+            status = 'At-Risk' if avg_gap > gap_threshold else 'Consistent'
+            investor_results.append({
+                'investor_id': inv_id,
+                'sip_transaction_count': len(sub),
+                'average_gap_days': round(avg_gap, 1),
+                'continuity_status': status
+            })
+            
     investor_df = pd.DataFrame(investor_results)
     
     consistent_count = (investor_df['continuity_status'] == 'Consistent').sum()
